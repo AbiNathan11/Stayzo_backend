@@ -5,7 +5,9 @@ dotenv.config();
 
 // Create reusable transporter object using SMTP transport
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // You can use other services like SendGrid, SES, etc.
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // Use TLS, often bypasses network blocks on port 465
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
