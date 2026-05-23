@@ -5,8 +5,7 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// In-memory store for OTPs (For production, use Redis or PostgreSQL)
-const otpStore = new Map<string, { otp: string; expiresAt: number; firstName?: string; lastName?: string; mode: string }>();
+// We now use Prisma for OTP storage instead of an in-memory Map
 
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -44,13 +43,14 @@ export const sendOtp = async (req: Request, res: Response) => {
 
     const otp = generateOTP();
     
-    // Store OTP with 10 mins expiry
-    otpStore.set(email, { 
-      otp, 
-      expiresAt: Date.now() + 10 * 60 * 1000,
-      firstName,
-      lastName,
-      mode
+    // Store OTP with 10 mins expiry in the database
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    
+    // Upsert so if they request multiple times, it just updates the existing record
+    await prisma.otp.upsert({
+      where: { email },
+      update: { otp, expiresAt, firstName, lastName, mode },
+      create: { email, otp, expiresAt, firstName: firstName || null, lastName: lastName || null, mode }
     });
 
     // Check if EMAIL_USER is configured, otherwise simulate
@@ -58,6 +58,9 @@ export const sendOtp = async (req: Request, res: Response) => {
       console.log(`[SIMULATION] OTP for ${email} is ${otp}`);
       return res.status(200).json({ message: 'OTP simulated successfully (Configure EMAIL_USER in .env to send real emails)' });
     }
+
+    // Log the OTP to the terminal for easy testing and debugging
+    console.log(`[DEV LOG] Generated OTP for ${email} is: ${otp}`);
 
     const emailSent = await sendOTPEmail(email, otp);
 
@@ -80,20 +83,20 @@ export const verifyOtp = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email and OTP are required' });
     }
 
-    const record = otpStore.get(email);
+    const record = await prisma.otp.findUnique({ where: { email } });
 
     if (!record) {
       return res.status(400).json({ error: 'No OTP requested for this email' });
     }
 
-    if (Date.now() > record.expiresAt) {
-      otpStore.delete(email);
+    if (new Date() > record.expiresAt) {
+      await prisma.otp.delete({ where: { email } });
       return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
     }
 
     if (record.otp === otp) {
       // Clear OTP after successful verification
-      otpStore.delete(email);
+      await prisma.otp.delete({ where: { email } });
       
       let user = null;
       try {
@@ -119,24 +122,39 @@ export const verifyOtp = async (req: Request, res: Response) => {
         const lowerEmail = email.toLowerCase();
         let first = record.firstName || 'Stayzo';
         let last = record.lastName || 'User';
+        let isAdmin = false;
+        let isOwner = false;
         if (lowerEmail === 'adminstayzo@gmail.com' || lowerEmail.startsWith('admin@')) {
-          first = 'Administrator';
+          first = 'Admin';
           last = 'Stayzo';
+          isAdmin = true;
         } else if (lowerEmail.includes('owner') || lowerEmail.includes('landlord')) {
           first = 'Owner';
           last = 'Stayzo';
+          isOwner = true;
         }
         user = {
           id: 9999,
           email: email,
           firstName: first,
-          lastName: last
+          lastName: last,
+          isAdmin,
+          isOwner,
+          isTenant: false
         };
       }
       
       // Generate JWT Token
       const token = jwt.sign(
-        { id: user?.id, email: user?.email, firstName: user?.firstName, lastName: user?.lastName }, 
+        { 
+          id: user?.id, 
+          email: user?.email, 
+          firstName: user?.firstName, 
+          lastName: user?.lastName,
+          isAdmin: user?.isAdmin,
+          isOwner: user?.isOwner,
+          isTenant: user?.isTenant
+        }, 
         process.env.JWT_SECRET || 'fallback_secret', 
         { expiresIn: '7d' }
       );

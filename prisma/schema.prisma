@@ -15,9 +15,20 @@ model User {
   email     String   @unique
   firstName String?
   lastName  String?
-  isTenant  Boolean  @default(false)
-  isOwner   Boolean  @default(false)
-  isAdmin   Boolean  @default(false)
+  isAdmin   Boolean? @default(false)
+  isOwner   Boolean? @default(false)
+  isTenant  Boolean? @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Otp {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  otp       String
+  expiresAt DateTime
+  firstName String?
+  lastName  String?
+  mode      String
+  createdAt DateTime @default(now())
 }
