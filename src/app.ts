@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
+import propertyRoutes from './routes/property.routes';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 
@@ -43,6 +44,7 @@ io.on('connection', (socket) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/properties', propertyRoutes);
 
 app.get('/', (req, res) => {
   res.send('Stayzo Backend Running with Socket.io');
