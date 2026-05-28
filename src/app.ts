@@ -48,6 +48,6 @@ app.get('/', (req, res) => {
   res.send('Stayzo Backend Running with Socket.io');
 });
 
-httpServer.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+httpServer.listen(Number(port), '0.0.0.0', () => {
+  console.log(`Server is running on port ${port} and listening on all network interfaces`);
 });
