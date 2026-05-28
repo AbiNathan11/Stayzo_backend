@@ -20,6 +20,32 @@ model User {
   isTenant  Boolean? @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  properties Property[]
+}
+
+model Property {
+  id            String   @id @default(uuid())
+  ownerId       String
+  title         String
+  description   String
+  price         Float
+  address       String
+  city          String?
+  state         String?
+  zipCode       String?
+  bedrooms      Int
+  bathrooms     Float
+  sqft          Float
+  type          String
+  status        String   @default("Available")
+  images        String[] 
+  panoramaImage String?  
+  waterBillImage String?
+  amenities     String[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  owner         User     @relation(fields: [ownerId], references: [id])
 }
 
 model Otp {
