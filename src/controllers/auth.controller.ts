@@ -41,6 +41,13 @@ export const sendOtp = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No account found with this email. Please sign up first.' });
     }
 
+    // Block login early if user exists but is not a tenant
+    if (mode === 'login' && existingUser && isDbOnline && !existingUser.isTenant) {
+      return res.status(403).json({
+        error: 'Access denied. Your account is not registered as a tenant. Please contact support or sign up as a tenant.'
+      });
+    }
+
     const otp = generateOTP();
     
     // Store OTP with 10 mins expiry in the database
@@ -110,8 +117,15 @@ export const verifyOtp = async (req: Request, res: Response) => {
              }
            });
         } else {
-           // Login mode, fetch user
+           // Login mode — fetch user
            user = await prisma.user.findUnique({ where: { email } });
+
+           // Block login if the user exists but isTenant is not true
+           if (user && !user.isTenant) {
+             return res.status(403).json({
+               error: 'Access denied. Your account is not registered as a tenant. Please contact support or sign up as a tenant.'
+             });
+           }
         }
       } catch (err) {
         console.warn("Database operation failed. Falling back to mock user session.", err);
@@ -234,4 +248,3 @@ export const getProfile = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 };
-
