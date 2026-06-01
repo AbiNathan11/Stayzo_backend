@@ -108,3 +108,24 @@ export const getPropertyById = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to fetch property' });
   }
 };
+
+// ── Get all properties belonging to a specific owner ──────────────────────────
+export const getPropertiesByOwner = async (req: Request, res: Response) => {
+  try {
+    const { ownerId } = req.params;
+
+    if (!ownerId) {
+      return res.status(400).json({ error: 'ownerId is required' });
+    }
+
+    const properties = await prisma.property.findMany({
+      where: { ownerId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.status(200).json(properties);
+  } catch (error: any) {
+    console.error('Error fetching owner properties:', error);
+    res.status(500).json({ error: 'Failed to fetch owner properties' });
+  }
+};
