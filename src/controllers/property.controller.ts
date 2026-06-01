@@ -92,6 +92,39 @@ export const getProperties = async (req: Request, res: Response) => {
   }
 };
 
+export const searchProperties = async (req: Request, res: Response) => {
+  try {
+    const { district, type, budget } = req.query;
+
+    const whereClause: any = {
+      status: { equals: 'Available', mode: 'insensitive' }
+    };
+
+    if (district) {
+      whereClause.state = { equals: (district as string).trim(), mode: 'insensitive' };
+    }
+    
+    if (type) {
+      whereClause.type = { equals: type as string, mode: 'insensitive' };
+    }
+
+    if (budget) {
+      whereClause.price = { lte: parseFloat(budget as string) };
+    }
+
+    const properties = await prisma.property.findMany({
+      where: whereClause,
+      include: { owner: { select: { firstName: true, lastName: true, email: true } } },
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    res.status(200).json(properties);
+  } catch (error: any) {
+    console.error('Error searching properties:', error);
+    res.status(500).json({ error: 'Failed to search properties' });
+  }
+};
+
 export const getPropertyById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
