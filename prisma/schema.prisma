@@ -36,6 +36,9 @@ model User {
   ownedSlots        AvailabilitySlot[] @relation("OwnerSlots")
   tenantBookings    Booking[]          @relation("TenantBookings")
   notifications     Notification[]
+  tenantThreads     ChatThread[]       @relation("TenantThreads")
+  ownerThreads      ChatThread[]       @relation("OwnerThreads")
+  sentMessages      ChatMessage[]      @relation("UserMessages")
 }
 
 model Property {
@@ -62,6 +65,7 @@ model Property {
   owner          User               @relation(fields: [ownerId], references: [id])
   slots          AvailabilitySlot[]
   bookings       Booking[]
+  threads        ChatThread[]
 }
 
 model AvailabilitySlot {
@@ -118,4 +122,32 @@ model Otp {
   lastName  String?
   mode      String
   createdAt DateTime @default(now())
+}
+
+model ChatThread {
+  id         String   @id @default(uuid())
+  tenantId   String
+  ownerId    String
+  propertyId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant     User     @relation("TenantThreads", fields: [tenantId], references: [id], onDelete: Cascade)
+  owner      User     @relation("OwnerThreads", fields: [ownerId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  messages   ChatMessage[]
+
+  @@unique([tenantId, ownerId, propertyId])
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  threadId   String
+  senderId   String
+  text       String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  thread     ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender     User       @relation("UserMessages", fields: [senderId], references: [id], onDelete: Cascade)
 }
