@@ -8,6 +8,7 @@ import bookingRoutes from './routes/booking.routes';
 import notificationRoutes from './routes/notification.routes';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { startCronJobs } from './services/cron.service';
 
 dotenv.config();
 
@@ -65,6 +66,8 @@ app.use('/api/notifications', notificationRoutes);
 app.get('/', (req, res) => {
   res.send('Stayzo Backend Running with Socket.io');
 });
+
+startCronJobs();
 
 httpServer.listen(Number(port), '0.0.0.0', () => {
   console.log(`Server is running on port ${port} and listening on all network interfaces`);
