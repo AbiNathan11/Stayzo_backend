@@ -8,29 +8,27 @@ datasource db {
 }
 
 model User {
-  id                String             @id @default(uuid())
-  email             String             @unique
-  firstName         String?
-  lastName          String?
-  profileImage      String?
-  nicFront          String?
-  nicBack           String?
-  isAdmin           Boolean?           @default(false)
-  isOwner           Boolean?           @default(false)
-  isTenant          Boolean?           @default(false)
-  autoApprove       Boolean            @default(false)
-  slotDuration      Int                @default(30)
-  bufferTime        Int                @default(0)
-  maxBookingsPerDay Int                @default(5)
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  properties        Property[]
-  ownedSlots        AvailabilitySlot[] @relation("OwnerSlots")
-  tenantBookings    Booking[]          @relation("TenantBookings")
-  notifications     Notification[]
-  tenantThreads     ChatThread[]       @relation("TenantThreads")
-  ownerThreads      ChatThread[]       @relation("OwnerThreads")
-  sentMessages      ChatMessage[]      @relation("UserMessages")
+  id                                   String             @id @default(uuid())
+  email                                String             @unique
+  firstName                            String?
+  lastName                             String?
+  createdAt                            DateTime           @default(now())
+  updatedAt                            DateTime           @updatedAt
+  isAdmin                              Boolean?           @default(false)
+  isOwner                              Boolean?           @default(false)
+  isTenant                             Boolean?           @default(false)
+  autoApprove                          Boolean            @default(false)
+  bufferTime                           Int                @default(0)
+  maxBookingsPerDay                    Int                @default(5)
+  slotDuration                         Int                @default(30)
+  profileImage                         String?
+  ownedSlots                           AvailabilitySlot[] @relation("OwnerSlots")
+  tenantBookings                       Booking[]          @relation("TenantBookings")
+  chatMessages                         ChatMessage[]
+  ownedThreads                         ChatThread[]       @relation("ChatThread_ownerIdToUser")
+  tenantThreads                        ChatThread[]       @relation("ChatThread_tenantIdToUser")
+  notifications                        Notification[]
+  properties                           Property[]
 }
 
 model Property {
@@ -56,7 +54,7 @@ model Property {
   waterBillImage String?
   slots          AvailabilitySlot[]
   bookings       Booking[]
-  ChatThread     ChatThread[]
+  chatThreads    ChatThread[]
   owner          User               @relation(fields: [ownerId], references: [id])
 }
 
@@ -120,27 +118,29 @@ model Otp {
 }
 
 model ChatMessage {
-  id         String     @id
-  threadId   String
-  senderId   String
-  text       String
-  isRead     Boolean    @default(false)
-  createdAt  DateTime   @default(now())
-  User       User       @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  ChatThread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  id                 String     @id @default(uuid())
+  threadId           String
+  senderId           String
+  text               String
+  isRead             Boolean    @default(false)
+  createdAt          DateTime   @default(now())
+  translatedText     String?
+  translatedLanguage String?
+  sender             User       @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  thread             ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 }
 
 model ChatThread {
-  id                             String        @id
-  tenantId                       String
-  ownerId                        String
-  propertyId                     String
-  createdAt                      DateTime      @default(now())
-  updatedAt                      DateTime
-  ChatMessage                    ChatMessage[]
-  User_ChatThread_ownerIdToUser  User          @relation("ChatThread_ownerIdToUser", fields: [ownerId], references: [id], onDelete: Cascade)
-  Property                       Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  User_ChatThread_tenantIdToUser User          @relation("ChatThread_tenantIdToUser", fields: [tenantId], references: [id], onDelete: Cascade)
+  id         String        @id @default(uuid())
+  tenantId   String
+  ownerId    String
+  propertyId String
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  messages   ChatMessage[]
+  owner      User          @relation("ChatThread_ownerIdToUser", fields: [ownerId], references: [id], onDelete: Cascade)
+  property   Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant     User          @relation("ChatThread_tenantIdToUser", fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, ownerId, propertyId])
 }
