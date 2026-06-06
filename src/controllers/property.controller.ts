@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import cloudinary from '../config/cloudinary';
+import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 
 const prisma = new PrismaClient();
 
@@ -144,11 +145,16 @@ export const getPropertyById = async (req: Request, res: Response) => {
 
 // ── Get all properties belonging to a specific owner ──────────────────────────
 export const getPropertiesByOwner = async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { ownerId } = req.params;
 
     if (!ownerId) {
       return res.status(400).json({ error: 'ownerId is required' });
+    }
+
+    if (authReq.user?.id !== ownerId && !authReq.user?.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden: Access denied to these listings' });
     }
 
     const properties = await prisma.property.findMany({

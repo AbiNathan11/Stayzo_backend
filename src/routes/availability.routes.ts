@@ -10,7 +10,7 @@ import {
   updateOwnerSettings,
   getOwnerSettings,
 } from '../controllers/availability.controller';
-import { authenticateJWT } from '../middlewares/auth.middleware';
+import { authenticateJWT, requireOwner } from '../middlewares/auth.middleware';
 
 const router = Router();
 
@@ -19,6 +19,8 @@ router.get('/property/:propertyId', getSlotsByProperty);
 
 // Owner-protected
 router.use(authenticateJWT);
+router.use(requireOwner);
+
 router.get('/owner', getOwnerSlots);
 router.get('/settings', getOwnerSettings);
 router.post('/', createSlot);
