@@ -8,17 +8,18 @@ import {
   cancelBooking,
   rescheduleBooking,
 } from '../controllers/booking.controller';
-import { authenticateJWT } from '../middlewares/auth.middleware';
+import { authenticateJWT, requireOwner, requireTenant } from '../middlewares/auth.middleware';
+import { validateCreateBooking } from '../middlewares/validation.middleware';
 
 const router = Router();
 
 router.use(authenticateJWT);
 
-router.post('/', createBooking);
-router.get('/tenant', getTenantBookings);
-router.get('/owner', getOwnerBookings);
-router.patch('/:id/approve', approveBooking);
-router.patch('/:id/reject', rejectBooking);
+router.post('/', requireTenant, validateCreateBooking, createBooking);
+router.get('/tenant', requireTenant, getTenantBookings);
+router.get('/owner', requireOwner, getOwnerBookings);
+router.patch('/:id/approve', requireOwner, approveBooking);
+router.patch('/:id/reject', requireOwner, rejectBooking);
 router.patch('/:id/cancel', cancelBooking);
 router.patch('/:id/reschedule', rescheduleBooking);
 

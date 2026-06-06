@@ -8,6 +8,9 @@ export interface AuthenticatedRequest extends Request {
     email: string;
     firstName?: string;
     lastName?: string;
+    isAdmin?: boolean;
+    isOwner?: boolean;
+    isTenant?: boolean;
   };
 }
 
@@ -37,4 +40,38 @@ export const authenticateJWT = (
   } else {
     res.status(401).json({ error: 'Unauthorized: No token provided' });
   }
+};
+
+// Authorization checks
+export const requireAdmin = (
+  req: AuthenticatedRequest, 
+  res: Response, 
+  next: NextFunction
+) => {
+  if (!req.user || !req.user.isAdmin) {
+    return res.status(403).json({ error: 'Forbidden: Admin access required' });
+  }
+  next();
+};
+
+export const requireOwner = (
+  req: AuthenticatedRequest, 
+  res: Response, 
+  next: NextFunction
+) => {
+  if (!req.user || (!req.user.isOwner && !req.user.isAdmin)) {
+    return res.status(403).json({ error: 'Forbidden: Owner access required' });
+  }
+  next();
+};
+
+export const requireTenant = (
+  req: AuthenticatedRequest, 
+  res: Response, 
+  next: NextFunction
+) => {
+  if (!req.user || (!req.user.isTenant && !req.user.isAdmin)) {
+    return res.status(403).json({ error: 'Forbidden: Tenant access required' });
+  }
+  next();
 };

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { sendOTPEmail } from '../services/email.service';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
+import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 
 const prisma = new PrismaClient();
 
@@ -188,11 +189,16 @@ export const verifyOtp = async (req: Request, res: Response) => {
 };
 
 export const updateProfile = async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { email, firstName, lastName, profileImage } = req.body;
 
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
+    }
+
+    if (authReq.user?.email !== email && !authReq.user?.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden: You cannot modify another user\'s profile' });
     }
 
     const updatedUser = await prisma.user.update({
@@ -220,11 +226,16 @@ export const updateProfile = async (req: Request, res: Response) => {
 };
 
 export const getProfile = async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { email } = req.params;
 
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
+    }
+
+    if (authReq.user?.email !== email && !authReq.user?.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden: You cannot view another user\'s profile' });
     }
 
     const userProfile = await prisma.user.findUnique({
