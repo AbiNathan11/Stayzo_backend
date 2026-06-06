@@ -1,6 +1,7 @@
 {
   "name": "stayzo-backend",
   "version": "1.0.0",
+  "ts-server-reload-trigger": 2,
   "description": "Stayzo Backend",
   "main": "src/app.ts",
   "scripts": {
