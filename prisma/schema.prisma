@@ -52,6 +52,8 @@ model Property {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
   waterBillImage String?
+  latitude       Float?
+  longitude      Float?
   slots          AvailabilitySlot[]
   bookings       Booking[]
   chatThreads    ChatThread[]
@@ -151,3 +153,6 @@ enum BookingStatus {
   CANCELLED
   COMPLETED
 }
+
+
+
