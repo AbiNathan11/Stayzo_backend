@@ -23,6 +23,8 @@ model User {
   firstName         String?
   lastName          String?
   profileImage      String?
+  nicFront          String?
+  nicBack           String?
   isAdmin           Boolean?           @default(false)
   isOwner           Boolean?           @default(false)
   isTenant          Boolean?           @default(false)
@@ -121,6 +123,9 @@ model Otp {
   firstName String?
   lastName  String?
   mode      String
+  role      String?
+  nicFront  String?
+  nicBack   String?
   createdAt DateTime @default(now())
 }
 
