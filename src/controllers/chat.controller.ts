@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient() as any;
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || 'dummy_key', // This is just a fallback for types if not provided
 });
@@ -101,34 +101,31 @@ export const getUserThreads = async (req: Request, res: Response) => {
     const { userId } = req.params;
     const { role } = req.query; // 'tenant' or 'owner'
 
-    let threads = [];
-    if (role === 'owner') {
-      threads = await prisma.chatThread.findMany({
-        where: { ownerId: userId },
-        include: {
-          tenant: true,
-          property: true,
-          messages: {
-            orderBy: { createdAt: 'desc' },
-            take: 1, // Get the latest message for the preview
-          }
-        },
-        orderBy: { updatedAt: 'desc' }
-      });
-    } else {
-      threads = await prisma.chatThread.findMany({
-        where: { tenantId: userId },
-        include: {
-          owner: true,
-          property: true,
-          messages: {
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-          }
-        },
-        orderBy: { updatedAt: 'desc' }
-      });
-    }
+    const threads = role === 'owner'
+      ? await prisma.chatThread.findMany({
+          where: { ownerId: userId },
+          include: {
+            tenant: true,
+            property: true,
+            messages: {
+              orderBy: { createdAt: 'desc' },
+              take: 1, // Get the latest message for the preview
+            }
+          },
+          orderBy: { updatedAt: 'desc' }
+        })
+      : await prisma.chatThread.findMany({
+          where: { tenantId: userId },
+          include: {
+            owner: true,
+            property: true,
+            messages: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            }
+          },
+          orderBy: { updatedAt: 'desc' }
+        });
 
     return res.status(200).json({ threads });
   } catch (error) {

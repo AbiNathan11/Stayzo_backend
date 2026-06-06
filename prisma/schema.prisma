@@ -24,9 +24,9 @@ model User {
   profileImage                         String?
   ownedSlots                           AvailabilitySlot[] @relation("OwnerSlots")
   tenantBookings                       Booking[]          @relation("TenantBookings")
-  ChatMessage                          ChatMessage[]
-  ChatThread_ChatThread_ownerIdToUser  ChatThread[]       @relation("ChatThread_ownerIdToUser")
-  ChatThread_ChatThread_tenantIdToUser ChatThread[]       @relation("ChatThread_tenantIdToUser")
+  chatMessages                         ChatMessage[]
+  ownedThreads                         ChatThread[]       @relation("ChatThread_ownerIdToUser")
+  tenantThreads                        ChatThread[]       @relation("ChatThread_tenantIdToUser")
   notifications                        Notification[]
   properties                           Property[]
 }
@@ -54,7 +54,7 @@ model Property {
   waterBillImage String?
   slots          AvailabilitySlot[]
   bookings       Booking[]
-  ChatThread     ChatThread[]
+  chatThreads    ChatThread[]
   owner          User               @relation(fields: [ownerId], references: [id])
 }
 
@@ -115,27 +115,29 @@ model Otp {
 }
 
 model ChatMessage {
-  id         String     @id
-  threadId   String
-  senderId   String
-  text       String
-  isRead     Boolean    @default(false)
-  createdAt  DateTime   @default(now())
-  User       User       @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  ChatThread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  id                 String     @id @default(uuid())
+  threadId           String
+  senderId           String
+  text               String
+  isRead             Boolean    @default(false)
+  createdAt          DateTime   @default(now())
+  translatedText     String?
+  translatedLanguage String?
+  sender             User       @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  thread             ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 }
 
 model ChatThread {
-  id                             String        @id
-  tenantId                       String
-  ownerId                        String
-  propertyId                     String
-  createdAt                      DateTime      @default(now())
-  updatedAt                      DateTime
-  ChatMessage                    ChatMessage[]
-  User_ChatThread_ownerIdToUser  User          @relation("ChatThread_ownerIdToUser", fields: [ownerId], references: [id], onDelete: Cascade)
-  Property                       Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  User_ChatThread_tenantIdToUser User          @relation("ChatThread_tenantIdToUser", fields: [tenantId], references: [id], onDelete: Cascade)
+  id         String        @id @default(uuid())
+  tenantId   String
+  ownerId    String
+  propertyId String
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  messages   ChatMessage[]
+  owner      User          @relation("ChatThread_ownerIdToUser", fields: [ownerId], references: [id], onDelete: Cascade)
+  property   Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant     User          @relation("ChatThread_tenantIdToUser", fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, ownerId, propertyId])
 }
