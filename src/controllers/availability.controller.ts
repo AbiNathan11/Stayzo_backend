@@ -25,6 +25,16 @@ export const createSlot = async (req: AuthenticatedRequest, res: Response) => {
       return res.status(400).json({ error: 'propertyId, date, startTime, endTime are required' });
     }
 
+    // Prevent creating slots in the past
+    const now = new Date();
+    const dateStr = date.split('T')[0];
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const [h, m] = startTime.split(':').map(Number);
+    const slotDateTime = new Date(year, month - 1, day, h, m, 0);
+    if (slotDateTime < now) {
+      return res.status(400).json({ error: 'Cannot create availability in the past' });
+    }
+
     // Verify property belongs to owner
     const property = await prisma.property.findFirst({ where: { id: propertyId, ownerId } });
     if (!property) return res.status(403).json({ error: 'Property not found or not owned by you' });
@@ -84,19 +94,30 @@ export const createRecurringSlots = async (req: AuthenticatedRequest, res: Respo
       return res.status(400).json({ error: 'propertyId, dayOfWeek, startTime, endTime are required' });
     }
 
-    const property = await prisma.property.findFirst({ where: { id: propertyId, ownerId } });
-    if (!property) return res.status(403).json({ error: 'Property not found or not owned by you' });
-
-    const duration = slotDuration || 30;
-    const buffer = bufferTime || 0;
-    const weeks = weeksAhead || 8;
-
     // Find the next occurrence of dayOfWeek from today
     const today = new Date();
     let start = new Date(today);
     while (start.getDay() !== dayOfWeek) {
       start = addDays(start, 1);
     }
+
+    // If the next occurrence is today, prevent creating past slots
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const startStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+    if (startStr === todayStr) {
+      const [h, m] = startTime.split(':').map(Number);
+      const slotDateTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), h, m, 0);
+      if (slotDateTime < today) {
+        return res.status(400).json({ error: 'Cannot create recurring availability starting in the past' });
+      }
+    }
+
+    const property = await prisma.property.findFirst({ where: { id: propertyId, ownerId } });
+    if (!property) return res.status(403).json({ error: 'Property not found or not owned by you' });
+
+    const duration = slotDuration || 30;
+    const buffer = bufferTime || 0;
+    const weeks = weeksAhead || 8;
 
     const allCreated = [];
     for (let w = 0; w < weeks; w++) {
@@ -149,6 +170,14 @@ export const blockDates = async (req: AuthenticatedRequest, res: Response) => {
 
     const { propertyId, startDate, endDate } = req.body;
     if (!propertyId || !startDate) return res.status(400).json({ error: 'propertyId and startDate are required' });
+
+    // Prevent blocking past dates
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const startStr = startDate.split('T')[0];
+    if (startStr < todayStr) {
+      return res.status(400).json({ error: 'Cannot block dates in the past' });
+    }
 
     const property = await prisma.property.findFirst({ where: { id: propertyId, ownerId } });
     if (!property) return res.status(403).json({ error: 'Property not found or not owned by you' });
