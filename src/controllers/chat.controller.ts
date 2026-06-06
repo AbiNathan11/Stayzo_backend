@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
+import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 
 const prisma = new PrismaClient() as any;
 const openai = new OpenAI({
@@ -10,9 +11,14 @@ const openai = new OpenAI({
 export const findOrCreateThread = async (req: Request, res: Response) => {
   try {
     const { tenantId, propertyId } = req.body;
+    const authReq = req as AuthenticatedRequest;
 
     if (!tenantId || !propertyId) {
       return res.status(400).json({ error: 'tenantId and propertyId are required' });
+    }
+
+    if (authReq.user?.id !== tenantId && !authReq.user?.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden: You can only start threads as yourself' });
     }
 
     // 1. Verify property and get ownerId
@@ -70,6 +76,7 @@ export const findOrCreateThread = async (req: Request, res: Response) => {
 };
 
 export const getThreadDetails = async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { id } = req.params;
 
@@ -89,6 +96,10 @@ export const getThreadDetails = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Thread not found' });
     }
 
+    if (authReq.user?.id !== thread.tenantId && authReq.user?.id !== thread.ownerId && !authReq.user?.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden: Access denied to this thread' });
+    }
+
     return res.status(200).json({ thread });
   } catch (error) {
     console.error('getThreadDetails error:', error);
@@ -97,6 +108,7 @@ export const getThreadDetails = async (req: Request, res: Response) => {
 };
 
 export const getUserThreads = async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { userId } = req.params;
     const { role } = req.query; // 'tenant' or 'owner'
@@ -135,6 +147,7 @@ export const getUserThreads = async (req: Request, res: Response) => {
 };
 
 export const sendMessage = async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { id } = req.params;
     const { senderId, text } = req.body;
@@ -143,9 +156,17 @@ export const sendMessage = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'senderId and text are required' });
     }
 
+    if (authReq.user?.id !== senderId && !authReq.user?.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden: You cannot send messages as someone else' });
+    }
+
     const thread = await prisma.chatThread.findUnique({ where: { id } });
     if (!thread) {
       return res.status(404).json({ error: 'Thread not found' });
+    }
+
+    if (authReq.user?.id !== thread.tenantId && authReq.user?.id !== thread.ownerId && !authReq.user?.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden: You are not a participant in this thread' });
     }
 
     const message = await prisma.chatMessage.create({
@@ -170,6 +191,7 @@ export const sendMessage = async (req: Request, res: Response) => {
 };
 
 export const translateMessage = async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const { id } = req.params;
     const { targetLanguage } = req.body;
@@ -181,6 +203,15 @@ export const translateMessage = async (req: Request, res: Response) => {
     const message = await prisma.chatMessage.findUnique({ where: { id } });
     if (!message) {
       return res.status(404).json({ error: 'Message not found' });
+    }
+
+    const thread = await prisma.chatThread.findUnique({ where: { id: message.threadId } });
+    if (!thread) {
+      return res.status(404).json({ error: 'Associated thread not found' });
+    }
+
+    if (authReq.user?.id !== thread.tenantId && authReq.user?.id !== thread.ownerId && !authReq.user?.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden: You are not a participant in this thread' });
     }
 
     // If it's already translated to this language, just return it
