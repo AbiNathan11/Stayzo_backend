@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { PrismaClient, BookingStatus } from '@prisma/client';
+import { PrismaClient, BookingStatus, Prisma } from '@prisma/client';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { sendOTPEmail } from '../services/email.service';
 
@@ -31,51 +31,84 @@ export const createBooking = async (req: AuthenticatedRequest, res: Response) =>
     const { slotId, note } = req.body;
     if (!slotId) return res.status(400).json({ error: 'slotId is required' });
 
-    // Get slot with owner's settings
-    const slot = await prisma.availabilitySlot.findUnique({
-      where: { id: slotId },
-      include: {
-        property: { select: { title: true, ownerId: true } },
-        bookings: { where: { status: { in: ['PENDING', 'CONFIRMED'] } } }
+    let result;
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        // Get slot with owner's settings
+        const slot = await tx.availabilitySlot.findUnique({
+          where: { id: slotId },
+          include: {
+            property: { select: { title: true, ownerId: true } },
+            bookings: { where: { status: { in: ['PENDING', 'CONFIRMED'] } } }
+          }
+        });
+
+        if (!slot) throw new Error('Slot not found');
+        if (slot.isBlocked) throw new Error('This slot is blocked');
+
+        // Prevent booking slots in the past
+        const now = new Date();
+        const [h, m] = slot.startTime.split(':').map(Number);
+        const slotDateTime = new Date(
+          slot.date.getUTCFullYear(),
+          slot.date.getUTCMonth(),
+          slot.date.getUTCDate(),
+          h, m, 0
+        );
+        if (slotDateTime < now) {
+          throw new Error('Cannot book a slot in the past');
+        }
+
+        // Check max bookings not exceeded
+        if (slot.bookings.length >= slot.maxBookings) {
+          throw new Error('This slot is fully booked');
+        }
+
+        // Prevent double booking by same tenant
+        const existing = await tx.booking.findFirst({
+          where: { slotId, tenantId, status: { in: ['PENDING', 'CONFIRMED'] } }
+        });
+        if (existing) throw new Error('You already have a booking for this slot');
+
+        // Get owner's auto-approve preference
+        const owner = await tx.user.findUnique({
+          where: { id: slot.property.ownerId },
+          select: { autoApprove: true }
+        });
+
+        const initialStatus: BookingStatus = owner?.autoApprove ? 'CONFIRMED' : 'PENDING';
+
+        const booking = await tx.booking.create({
+          data: {
+            slotId,
+            tenantId,
+            propertyId: slot.propertyId,
+            status: initialStatus,
+            note: note || null,
+          },
+          include: {
+            slot: true,
+            property: { select: { title: true } },
+            tenant: { select: { firstName: true, lastName: true, email: true } }
+          }
+        });
+
+        return { booking, slot, initialStatus };
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+      });
+    } catch (err: any) {
+      if (err.message === 'Slot not found') return res.status(404).json({ error: err.message });
+      if (['This slot is fully booked', 'You already have a booking for this slot'].includes(err.message)) {
+        return res.status(409).json({ error: err.message });
       }
-    });
-
-    if (!slot) return res.status(404).json({ error: 'Slot not found' });
-    if (slot.isBlocked) return res.status(400).json({ error: 'This slot is blocked' });
-
-    // Check max bookings not exceeded
-    if (slot.bookings.length >= slot.maxBookings) {
-      return res.status(409).json({ error: 'This slot is fully booked' });
+      if (['This slot is blocked', 'Cannot book a slot in the past'].includes(err.message)) {
+        return res.status(400).json({ error: err.message });
+      }
+      throw err;
     }
 
-    // Prevent double booking by same tenant
-    const existing = await prisma.booking.findFirst({
-      where: { slotId, tenantId, status: { in: ['PENDING', 'CONFIRMED'] } }
-    });
-    if (existing) return res.status(409).json({ error: 'You already have a booking for this slot' });
-
-    // Get owner's auto-approve preference
-    const owner = await prisma.user.findUnique({
-      where: { id: slot.property.ownerId },
-      select: { autoApprove: true }
-    });
-
-    const initialStatus: BookingStatus = owner?.autoApprove ? 'CONFIRMED' : 'PENDING';
-
-    const booking = await prisma.booking.create({
-      data: {
-        slotId,
-        tenantId,
-        propertyId: slot.propertyId,
-        status: initialStatus,
-        note: note || null,
-      },
-      include: {
-        slot: true,
-        property: { select: { title: true } },
-        tenant: { select: { firstName: true, lastName: true, email: true } }
-      }
-    });
+    const { booking, slot, initialStatus } = result;
 
     // Notify owner
     const tenantName = `${booking.tenant.firstName || ''} ${booking.tenant.lastName || ''}`.trim();
@@ -317,7 +350,9 @@ export const rescheduleBooking = async (req: AuthenticatedRequest, res: Response
     const isTenant = booking.tenantId === userId;
     const isOwner = booking.property.ownerId === userId;
     if (!isTenant && !isOwner) return res.status(403).json({ error: 'Forbidden' });
-    if (booking.status !== 'PENDING') return res.status(400).json({ error: 'Only pending bookings can be rescheduled' });
+    if (!['PENDING', 'CONFIRMED'].includes(booking.status)) {
+      return res.status(400).json({ error: 'Only pending or confirmed bookings can be rescheduled' });
+    }
 
     const newSlot = await prisma.availabilitySlot.findUnique({
       where: { id: newSlotId },
@@ -329,9 +364,16 @@ export const rescheduleBooking = async (req: AuthenticatedRequest, res: Response
       return res.status(409).json({ error: 'New slot is fully booked' });
     }
 
+    // If owner reschedules, it's auto-confirmed. If tenant, check owner's autoApprove pref.
+    const ownerPref = await prisma.user.findUnique({
+      where: { id: booking.property.ownerId },
+      select: { autoApprove: true }
+    });
+    const newStatus = isOwner ? 'CONFIRMED' : (ownerPref?.autoApprove ? 'CONFIRMED' : 'PENDING');
+
     const updated = await prisma.booking.update({
       where: { id },
-      data: { slotId: newSlotId, status: 'PENDING' }
+      data: { slotId: newSlotId, status: newStatus }
     });
 
     // Notify owner of reschedule
