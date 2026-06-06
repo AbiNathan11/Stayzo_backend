@@ -141,12 +141,14 @@ model ChatThread {
 }
 
 model ChatMessage {
-  id         String   @id @default(uuid())
-  threadId   String
-  senderId   String
-  text       String
-  isRead     Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  id                 String   @id @default(uuid())
+  threadId           String
+  senderId           String
+  text               String
+  translatedText     String?
+  translatedLanguage String?
+  isRead             Boolean  @default(false)
+  createdAt          DateTime @default(now())
 
   thread     ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
   sender     User       @relation("UserMessages", fields: [senderId], references: [id], onDelete: Cascade)
