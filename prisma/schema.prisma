@@ -111,6 +111,9 @@ model Otp {
   firstName String?
   lastName  String?
   mode      String
+  role      String?
+  nicFront  String?
+  nicBack   String?
   createdAt DateTime @default(now())
 }
 

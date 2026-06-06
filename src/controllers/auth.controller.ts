@@ -14,7 +14,7 @@ const generateOTP = () => {
 
 export const sendOtp = async (req: Request, res: Response) => {
   try {
-    const { email, firstName, lastName, mode } = req.body;
+    const { email, firstName, lastName, mode, role, nicFront, nicBack } = req.body;
 
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
@@ -42,11 +42,18 @@ export const sendOtp = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No account found with this email. Please sign up first.' });
     }
 
-    // Block login early if user exists but is not a tenant
-    if (mode === 'login' && existingUser && isDbOnline && !existingUser.isTenant) {
-      return res.status(403).json({
-        error: 'Access denied. Your account is not registered as a tenant. Please contact support or sign up as a tenant.'
-      });
+    // Block login early if role is specified and doesn't match the database role
+    if (mode === 'login' && existingUser && isDbOnline) {
+      if (role === 'landlord' && !existingUser.isOwner) {
+        return res.status(403).json({
+          error: 'Access denied. Your account is not registered as a landlord. Please sign up as a landlord first.'
+        });
+      }
+      if ((role === 'tenant' || !role) && !existingUser.isTenant) {
+        return res.status(403).json({
+          error: 'Access denied. Your account is not registered as a tenant. Please sign up as a tenant first.'
+        });
+      }
     }
 
     const otp = generateOTP();
@@ -57,8 +64,8 @@ export const sendOtp = async (req: Request, res: Response) => {
     // Upsert so if they request multiple times, it just updates the existing record
     await prisma.otp.upsert({
       where: { email },
-      update: { otp, expiresAt, firstName, lastName, mode },
-      create: { email, otp, expiresAt, firstName: firstName || null, lastName: lastName || null, mode }
+      update: { otp, expiresAt, firstName, lastName, mode, role: role || 'tenant', nicFront: nicFront || null, nicBack: nicBack || null },
+      create: { email, otp, expiresAt, firstName: firstName || null, lastName: lastName || null, mode, role: role || 'tenant', nicFront: nicFront || null, nicBack: nicBack || null }
     });
 
     // Check if EMAIL_USER is configured, otherwise simulate
@@ -114,18 +121,29 @@ export const verifyOtp = async (req: Request, res: Response) => {
              data: {
                email: email,
                firstName: record.firstName || '',
-               lastName: record.lastName || ''
+               lastName: record.lastName || '',
+               isOwner: record.role === 'landlord',
+               isTenant: record.role === 'tenant' || !record.role,
+               nicFront: record.role === 'landlord' ? record.nicFront : null,
+               nicBack: record.role === 'landlord' ? record.nicBack : null
              }
            });
         } else {
            // Login mode — fetch user
            user = await prisma.user.findUnique({ where: { email } });
 
-           // Block login if the user exists but isTenant is not true
-           if (user && !user.isTenant) {
-             return res.status(403).json({
-               error: 'Access denied. Your account is not registered as a tenant. Please contact support or sign up as a tenant.'
-             });
+           // Block login if the user exists but role flags do not match record.role
+           if (user) {
+             if (record.role === 'landlord' && !user.isOwner) {
+               return res.status(403).json({
+                 error: 'Access denied. Your account is not registered as a landlord. Please sign up as a landlord first.'
+               });
+             }
+             if ((record.role === 'tenant' || !record.role) && !user.isTenant) {
+               return res.status(403).json({
+                 error: 'Access denied. Your account is not registered as a tenant. Please sign up as a tenant first.'
+               });
+             }
            }
         }
       } catch (err) {
