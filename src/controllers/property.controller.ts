@@ -92,6 +92,39 @@ export const getProperties = async (req: Request, res: Response) => {
   }
 };
 
+export const searchProperties = async (req: Request, res: Response) => {
+  try {
+    const { district, type, budget } = req.query;
+
+    const whereClause: any = {
+      status: { equals: 'Available', mode: 'insensitive' }
+    };
+
+    if (district) {
+      whereClause.state = { equals: (district as string).trim(), mode: 'insensitive' };
+    }
+    
+    if (type) {
+      whereClause.type = { equals: type as string, mode: 'insensitive' };
+    }
+
+    if (budget) {
+      whereClause.price = { lte: parseFloat(budget as string) };
+    }
+
+    const properties = await prisma.property.findMany({
+      where: whereClause,
+      include: { owner: { select: { firstName: true, lastName: true, email: true } } },
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    res.status(200).json(properties);
+  } catch (error: any) {
+    console.error('Error searching properties:', error);
+    res.status(500).json({ error: 'Failed to search properties' });
+  }
+};
+
 export const getPropertyById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -106,5 +139,26 @@ export const getPropertyById = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching property:', error);
     res.status(500).json({ error: 'Failed to fetch property' });
+  }
+};
+
+// ── Get all properties belonging to a specific owner ──────────────────────────
+export const getPropertiesByOwner = async (req: Request, res: Response) => {
+  try {
+    const { ownerId } = req.params;
+
+    if (!ownerId) {
+      return res.status(400).json({ error: 'ownerId is required' });
+    }
+
+    const properties = await prisma.property.findMany({
+      where: { ownerId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.status(200).json(properties);
+  } catch (error: any) {
+    console.error('Error fetching owner properties:', error);
+    res.status(500).json({ error: 'Failed to fetch owner properties' });
   }
 };
