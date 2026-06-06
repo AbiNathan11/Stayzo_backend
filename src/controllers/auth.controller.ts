@@ -32,7 +32,7 @@ export const sendOtp = async (req: Request, res: Response) => {
 
     // Always allow adminstayzo@gmail.com and admin@/owner@/landlord@ emails to bypass checks
     const lowerEmail = email.toLowerCase();
-    const isSpecialEmail = lowerEmail === 'adminstayzo@gmail.com' || lowerEmail.startsWith('admin@') || lowerEmail.includes('owner') || lowerEmail.includes('landlord');
+    const isSpecialEmail = lowerEmail === 'adminstayzo@gmail.com' || lowerEmail === 'stayzoavp@gmail.com' || lowerEmail.startsWith('admin@') || lowerEmail.includes('owner') || lowerEmail.includes('landlord');
 
     if (mode === 'signup' && existingUser && isDbOnline) {
       return res.status(400).json({ error: 'User already exists with this email. Please log in.' });
