@@ -34,6 +34,7 @@ export const createProperty = async (req: Request, res: Response) => {
       address, city, state, zipCode,
       bedrooms, bathrooms, sqft, type,
       images, panoramaImage, waterBillImage, amenities,
+      latitude, longitude,
     } = req.body;
 
     if (!ownerId || !title || !price) {
@@ -51,17 +52,19 @@ export const createProperty = async (req: Request, res: Response) => {
       );
     }
 
-    // Geocode address → save lat/lng (used later for real-time noise prediction)
-    const fullAddress = [address, city, state, zipCode].filter(Boolean).join(', ');
-    let lat: number | null = null;
-    let lng: number | null = null;
+    // Use provided lat/lng or geocode address if not provided
+    let lat: number | null = (latitude !== undefined && latitude !== null) ? parseFloat(latitude) : null;
+    let lng: number | null = (longitude !== undefined && longitude !== null) ? parseFloat(longitude) : null;
 
-    if (fullAddress.trim()) {
-      try {
-        const coords = await geocodeAddress(fullAddress);
-        if (coords) { lat = coords.lat; lng = coords.lng; }
-      } catch (err) {
-        console.error('Geocoding failed during property creation:', err);
+    if (lat === null && lng === null && address) {
+      const fullAddress = [address, city, state, zipCode].filter(Boolean).join(', ');
+      if (fullAddress.trim()) {
+        try {
+          const coords = await geocodeAddress(fullAddress);
+          if (coords) { lat = coords.lat; lng = coords.lng; }
+        } catch (err) {
+          console.error('Geocoding failed during property creation:', err);
+        }
       }
     }
 

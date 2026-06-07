@@ -22,6 +22,8 @@ model User {
   maxBookingsPerDay                    Int                @default(5)
   slotDuration                         Int                @default(30)
   profileImage                         String?
+  nicFront                             String?
+  nicBack                              String?
   ownedSlots                           AvailabilitySlot[] @relation("OwnerSlots")
   tenantBookings                       Booking[]          @relation("TenantBookings")
   chatMessages                         ChatMessage[]
