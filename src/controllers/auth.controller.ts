@@ -35,7 +35,11 @@ export const sendOtp = async (req: Request, res: Response) => {
     const isSpecialEmail = lowerEmail === 'adminstayzo@gmail.com' || lowerEmail === 'stayzoavp@gmail.com' || lowerEmail.startsWith('admin@') || lowerEmail.includes('owner') || lowerEmail.includes('landlord');
 
     if (mode === 'signup' && existingUser && isDbOnline) {
-      return res.status(400).json({ error: 'User already exists with this email. Please log in.' });
+      if (role === 'landlord' && !existingUser.isOwner) {
+        // Allow it to pass through for upgrade
+      } else {
+        return res.status(400).json({ error: 'User already exists with this email. Please log in.' });
+      }
     }
 
     if (mode === 'login' && !existingUser && isDbOnline && !isSpecialEmail) {
@@ -116,18 +120,31 @@ export const verifyOtp = async (req: Request, res: Response) => {
       let user = null;
       try {
         if (record.mode === 'signup') {
-          // Create the new user in DB
-          user = await prisma.user.create({
-            data: {
-              email: email,
-              firstName: record.firstName || '',
-              lastName: record.lastName || '',
-              isOwner: record.role === 'landlord',
-              isTenant: record.role === 'tenant' || !record.role,
-              nicFront: record.role === 'landlord' ? record.nicFront : null,
-              nicBack: record.role === 'landlord' ? record.nicBack : null
-            }
-          });
+          // Check if user already exists (upgrade scenario)
+          const existing = await prisma.user.findUnique({ where: { email } });
+          if (existing) {
+            user = await prisma.user.update({
+              where: { email },
+              data: {
+                isOwner: record.role === 'landlord' ? true : existing.isOwner,
+                nicFront: record.role === 'landlord' && record.nicFront ? record.nicFront : existing.nicFront,
+                nicBack: record.role === 'landlord' && record.nicBack ? record.nicBack : existing.nicBack
+              }
+            });
+          } else {
+            // Create the new user in DB
+            user = await prisma.user.create({
+              data: {
+                email: email,
+                firstName: record.firstName || '',
+                lastName: record.lastName || '',
+                isOwner: record.role === 'landlord',
+                isTenant: true, // Landlords are also tenants by default
+                nicFront: record.role === 'landlord' ? record.nicFront : null,
+                nicBack: record.role === 'landlord' ? record.nicBack : null
+              }
+            });
+          }
         } else {
           // Login mode — fetch user
           user = await prisma.user.findUnique({ where: { email } });
@@ -173,7 +190,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
           lastName: last,
           isAdmin,
           isOwner,
-          isTenant: false
+          isTenant: true
         };
       }
 
