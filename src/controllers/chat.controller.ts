@@ -71,7 +71,7 @@ export const findOrCreateThread = async (req: Request, res: Response) => {
     return res.status(200).json({ thread });
   } catch (error) {
     console.error('findOrCreateThread error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -103,7 +103,7 @@ export const getThreadDetails = async (req: Request, res: Response) => {
     return res.status(200).json({ thread });
   } catch (error) {
     console.error('getThreadDetails error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -142,7 +142,7 @@ export const getUserThreads = async (req: Request, res: Response) => {
     return res.status(200).json({ threads });
   } catch (error) {
     console.error('getUserThreads error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -186,7 +186,7 @@ export const sendMessage = async (req: Request, res: Response) => {
     return res.status(201).json({ message });
   } catch (error) {
     console.error('sendMessage error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -220,11 +220,18 @@ export const translateMessage = async (req: Request, res: Response) => {
     }
 
     // Call OpenAI for translation
-    const prompt = `Translate the following chat message into ${targetLanguage}. Return only the direct translation without any extra conversational filler or quotation marks.\n\nMessage: "${message.text}"`;
+    const systemPrompt = `You are an expert bilingual translator for a real estate property rental platform in Sri Lanka.
+Translate the following chat message accurately into ${targetLanguage}.
+- Preserve the exact tone, intent, and casual nuance of the original message.
+- Use natural, everyday phrasing that a native speaker would use.
+- Do NOT include any explanations, quotation marks, or conversational filler in your output. Just the raw translated text.`;
 
     const completion = await openai.chat.completions.create({
-      messages: [{ role: 'user', content: prompt }],
-      model: 'gpt-4o-mini', // or another preferred model
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Message to translate:\n"${message.text}"` }
+      ],
+      model: 'gpt-4o', // Upgraded to gpt-4o for parity with ChatGPT's translation accuracy
     });
 
     const translatedText = completion.choices[0]?.message?.content?.trim() || message.text;
