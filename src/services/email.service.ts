@@ -44,3 +44,33 @@ export const sendOTPEmail = async (email: string, otp: string) => {
     return false;
   }
 };
+
+export const sendReplyEmail = async (toEmail: string, originalSubject: string, replyMessage: string, originalMessage: string) => {
+  try {
+    const mailOptions = {
+      from: `"Stayzo Admin Support" <${process.env.EMAIL_USER}>`,
+      to: toEmail,
+      subject: `Re: ${originalSubject}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; color: #1A1A1A;">
+          <h3 style="color: #1A1A1A; margin-bottom: 20px;">Stayzo Admin Support Reply</h3>
+          <p style="font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${replyMessage}</p>
+          
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 13px; color: #777;">
+            <p><strong>Original Message Inquired:</strong></p>
+            <blockquote style="margin: 0 0 0 10px; padding-left: 10px; border-left: 3px solid #ccc; font-style: italic;">
+              ${originalMessage}
+            </blockquote>
+          </div>
+        </div>
+      `,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Reply Email sent: %s', info.messageId);
+    return true;
+  } catch (error) {
+    console.error('Error sending reply email:', error);
+    return false;
+  }
+};

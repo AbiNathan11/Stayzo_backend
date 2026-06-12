@@ -7,6 +7,7 @@ import availabilityRoutes from './routes/availability.routes';
 import bookingRoutes from './routes/booking.routes';
 import notificationRoutes from './routes/notification.routes';
 import chatRoutes from './routes/chat.routes';
+import contactRoutes from './routes/contact.routes';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { startCronJobs } from './services/cron.service';
@@ -64,6 +65,7 @@ app.use('/api/availability', availabilityRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/contact', contactRoutes);
 
 app.get('/', (req, res) => {
   res.send('Stayzo Backend Running with Socket.io');

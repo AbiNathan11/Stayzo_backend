@@ -24,6 +24,8 @@ model User {
   profileImage                         String?
   nicFront                             String?
   nicBack                              String?
+  status                               String             @default("Active")
+  verified                             Boolean            @default(false)
   ownedSlots                           AvailabilitySlot[] @relation("OwnerSlots")
   tenantBookings                       Booking[]          @relation("TenantBookings")
   chatMessages                         ChatMessage[]
@@ -154,6 +156,17 @@ enum BookingStatus {
   CONFIRMED
   CANCELLED
   COMPLETED
+}
+
+model ContactMessage {
+  id        String   @id @default(uuid())
+  fullName  String
+  email     String
+  subject   String?  @default("General Inquiry")
+  message   String
+  status    String   @default("Unread")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 
