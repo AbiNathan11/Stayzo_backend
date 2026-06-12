@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/db';
 import cloudinary from '../config/cloudinary';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import {
@@ -9,8 +9,6 @@ import {
   predictNoiseScoreBasic,
   NoisePredictionInput,
 } from '../services/noise.service';
-
-const prisma = new PrismaClient();
 
 // ── Cloudinary helper ─────────────────────────────────────────────────────────
 
@@ -342,5 +340,25 @@ export const getNearbyAmenities = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching nearby amenities:', error);
     res.status(500).json({ error: 'Failed to fetch nearby amenities' });
+  }
+};
+
+export const togglePropertyStatus = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const property = await prisma.property.findUnique({ where: { id } });
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+    const currentStatus = property.status;
+    const newStatus = currentStatus === 'Disabled' ? 'Available' : 'Disabled';
+    const updated = await prisma.property.update({
+      where: { id },
+      data: { status: newStatus }
+    });
+    res.status(200).json(updated);
+  } catch (error) {
+    console.error('Failed to toggle property status:', error);
+    res.status(500).json({ error: 'Failed to toggle property status' });
   }
 };

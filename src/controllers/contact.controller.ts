@@ -1,8 +1,6 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/db';
 import { sendReplyEmail } from '../services/email.service';
-
-const prisma = new PrismaClient();
 
 export const createContactMessage = async (req: Request, res: Response) => {
   try {

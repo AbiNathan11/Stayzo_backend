@@ -9,6 +9,8 @@ import notificationRoutes from './routes/notification.routes';
 import chatRoutes from './routes/chat.routes';
 import contactRoutes from './routes/contact.routes';
 import agreementRoutes from './routes/agreement.routes';
+import reviewRoutes from './routes/review.routes';
+import transactionRoutes from './routes/transaction.routes';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { startCronJobs } from './services/cron.service';
@@ -68,6 +70,8 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/agreements', agreementRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/transactions', transactionRoutes);
 
 app.get('/', (req, res) => {
   res.send('Stayzo Backend Running with Socket.io');

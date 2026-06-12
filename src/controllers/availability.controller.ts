@@ -1,9 +1,7 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/db';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { addDays, format, parseISO, startOfDay } from 'date-fns';
-
-const prisma = new PrismaClient();
 
 // Helper: add minutes to a "HH:MM" string → return "HH:MM"
 function addMinutes(time: string, mins: number): string {

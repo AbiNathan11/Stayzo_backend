@@ -6,7 +6,8 @@ import {
   getPropertiesByOwner, 
   searchProperties,
   updateProperty,
-  getNearbyAmenities
+  getNearbyAmenities,
+  togglePropertyStatus
 } from '../controllers/property.controller';
 import { authenticateJWT, requireOwner } from '../middlewares/auth.middleware';
 import { validateCreateProperty } from '../middlewares/validation.middleware';
@@ -21,5 +22,6 @@ router.get('/amenities', getNearbyAmenities); // Place before /:id to avoid coll
 router.get('/owner/:ownerId', authenticateJWT, getPropertiesByOwner);  // owner-specific listings
 router.get('/:id', getPropertyById);
 router.put('/:id', authenticateJWT, requireOwner, updateProperty);
+router.post('/:id/toggle-status', togglePropertyStatus);
 
 export default router;

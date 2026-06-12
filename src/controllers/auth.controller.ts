@@ -1,10 +1,8 @@
 import { Request, Response } from 'express';
 import { sendOTPEmail } from '../services/email.service';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/db';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
-
-const prisma = new PrismaClient();
 
 // We now use Prisma for OTP storage instead of an in-memory Map
 
