@@ -1,9 +1,8 @@
 import { Response } from 'express';
-import { PrismaClient, BookingStatus, Prisma } from '@prisma/client';
+import { BookingStatus, Prisma } from '@prisma/client';
+import { prisma } from '../config/db';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { sendOTPEmail } from '../services/email.service';
-
-const prisma = new PrismaClient();
 
 // Helper to create a notification + emit socket event
 async function createNotification(

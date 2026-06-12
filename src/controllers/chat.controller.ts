@@ -1,9 +1,7 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/db';
 import OpenAI from 'openai';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
-
-const prisma = new PrismaClient() as any;
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || 'dummy_key', // This is just a fallback for types if not provided
 });

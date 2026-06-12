@@ -24,6 +24,8 @@ model User {
   profileImage                         String?
   nicFront                             String?
   nicBack                              String?
+  status                               String             @default("Active")
+  verified                             Boolean            @default(false)
   ownedSlots                           AvailabilitySlot[] @relation("OwnerSlots")
   tenantBookings                       Booking[]          @relation("TenantBookings")
   chatMessages                         ChatMessage[]
@@ -154,6 +156,66 @@ enum BookingStatus {
   CONFIRMED
   CANCELLED
   COMPLETED
+}
+
+model ContactMessage {
+  id        String   @id @default(uuid())
+  fullName  String
+  email     String
+  subject   String?  @default("General Inquiry")
+  message   String
+  status    String   @default("Unread")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LeaseAgreement {
+  id              String   @id @default(uuid())
+  tenantName      String
+  tenantEmail     String
+  landlordName    String
+  landlordEmail   String
+  monthlyRent     Float
+  securityDeposit Float
+  termLength      String
+  startDate       String
+  endDate         String
+  status          String   @default("Pending Signatures")
+  listingName     String
+  contractText    String   @db.Text
+  landlordSig     String?  @db.Text
+  tenantSig       String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Review {
+  id          String   @id @default(uuid())
+  authorName  String
+  authorEmail String
+  rating      Int
+  sentiment   String
+  comment     String
+  targetName  String
+  likes       Int      @default(0)
+  status      String   @default("Pending")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Transaction {
+  id            String   @id @default(uuid())
+  type          String
+  amount        Float
+  user          String
+  email         String
+  targetListing String
+  status        String   @default("Pending")
+  reference     String
+  paymentMethod String
+  ipAddress     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 

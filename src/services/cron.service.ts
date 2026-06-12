@@ -1,8 +1,6 @@
 import cron from 'node-cron';
-import { PrismaClient } from '@prisma/client';
 import { addDays } from 'date-fns';
-
-const prisma = new PrismaClient();
+import { prisma } from '../config/db';
 
 // Helper: add minutes to a "HH:MM" string → return "HH:MM"
 function addMinutes(time: string, mins: number): string {

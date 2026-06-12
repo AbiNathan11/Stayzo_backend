@@ -1,10 +1,8 @@
 import { Request, Response } from 'express';
 import { sendOTPEmail } from '../services/email.service';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/db';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
-
-const prisma = new PrismaClient();
 
 // We now use Prisma for OTP storage instead of an in-memory Map
 
@@ -275,5 +273,79 @@ export const getProfile = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+};
+
+export const getAllUsers = async (req: Request, res: Response) => {
+  try {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    res.status(200).json(users);
+  } catch (error) {
+    console.error('Failed to fetch users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+};
+
+export const toggleVerifyUser = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { verified: !user.verified }
+    });
+    res.status(200).json(updated);
+  } catch (error) {
+    console.error('Failed to toggle verification:', error);
+    res.status(500).json({ error: 'Failed to toggle verification' });
+  }
+};
+
+export const toggleSuspendUser = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { status: user.status === 'Active' ? 'Suspended' : 'Active' }
+    });
+    res.status(200).json(updated);
+  } catch (error) {
+    console.error('Failed to toggle suspension:', error);
+    res.status(500).json({ error: 'Failed to toggle suspension' });
+  }
+};
+
+export const getDashboardStats = async (req: Request, res: Response) => {
+  try {
+    const totalUsers = await prisma.user.count();
+    const pendingApprovals = await prisma.user.count({
+      where: {
+        isOwner: true,
+        verified: false
+      }
+    });
+    const activeListings = await prisma.property.count();
+    const pendingMessages = await prisma.contactMessage.count({
+      where: { status: 'Unread' }
+    });
+
+    res.status(200).json({
+      totalUsers,
+      pendingApprovals,
+      activeListings,
+      pendingMessages
+    });
+  } catch (error) {
+    console.error('Failed to fetch stats:', error);
+    res.status(500).json({ error: 'Failed to fetch dashboard stats' });
   }
 };
