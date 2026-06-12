@@ -3,6 +3,7 @@ import { sendOTPEmail } from '../services/email.service';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/db';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
+import { watermarkImage } from '../utils/watermark';
 
 // We now use Prisma for OTP storage instead of an in-memory Map
 
@@ -54,6 +55,17 @@ export const sendOtp = async (req: Request, res: Response) => {
       }
     }
 
+    // Apply diagonal watermark to secure uploaded identity cards
+    let watermarkedFront = nicFront || null;
+    let watermarkedBack = nicBack || null;
+
+    if (nicFront) {
+      watermarkedFront = await watermarkImage(nicFront);
+    }
+    if (nicBack) {
+      watermarkedBack = await watermarkImage(nicBack);
+    }
+
     const otp = generateOTP();
     
     // Store OTP with 10 mins expiry in the database
@@ -62,8 +74,8 @@ export const sendOtp = async (req: Request, res: Response) => {
     // Upsert so if they request multiple times, it just updates the existing record
     await prisma.otp.upsert({
       where: { email },
-      update: { otp, expiresAt, firstName, lastName, mode, role: role || 'tenant', nicFront: nicFront || null, nicBack: nicBack || null },
-      create: { email, otp, expiresAt, firstName: firstName || null, lastName: lastName || null, mode, role: role || 'tenant', nicFront: nicFront || null, nicBack: nicBack || null }
+      update: { otp, expiresAt, firstName, lastName, mode, role: role || 'tenant', nicFront: watermarkedFront, nicBack: watermarkedBack },
+      create: { email, otp, expiresAt, firstName: firstName || null, lastName: lastName || null, mode, role: role || 'tenant', nicFront: watermarkedFront, nicBack: watermarkedBack }
     });
 
     // Check if EMAIL_USER is configured, otherwise simulate
@@ -122,8 +134,8 @@ export const verifyOtp = async (req: Request, res: Response) => {
                lastName: record.lastName || '',
                isOwner: record.role === 'landlord',
                isTenant: record.role === 'tenant' || !record.role,
-               nicFront: record.role === 'landlord' ? record.nicFront : null,
-               nicBack: record.role === 'landlord' ? record.nicBack : null
+               nicFront: record.nicFront || null,
+               nicBack: record.nicBack || null
              }
            });
         } else {
