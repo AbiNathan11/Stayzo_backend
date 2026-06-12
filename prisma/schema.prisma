@@ -169,5 +169,25 @@ model ContactMessage {
   updatedAt DateTime @updatedAt
 }
 
+model LeaseAgreement {
+  id              String   @id @default(uuid())
+  tenantName      String
+  tenantEmail     String
+  landlordName    String
+  landlordEmail   String
+  monthlyRent     Float
+  securityDeposit Float
+  termLength      String
+  startDate       String
+  endDate         String
+  status          String   @default("Pending Signatures")
+  listingName     String
+  contractText    String   @db.Text
+  landlordSig     String?  @db.Text
+  tenantSig       String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 
 
