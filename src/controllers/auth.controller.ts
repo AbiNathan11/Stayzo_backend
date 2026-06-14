@@ -33,7 +33,16 @@ export const sendOtp = async (req: Request, res: Response) => {
     const lowerEmail = email.toLowerCase();
     const isSpecialEmail = lowerEmail === 'adminstayzo@gmail.com' || lowerEmail === 'stayzoavp@gmail.com' || lowerEmail.startsWith('admin@') || lowerEmail.includes('owner') || lowerEmail.includes('landlord');
 
+    let isUpgrade = false;
     if (mode === 'signup' && existingUser && isDbOnline) {
+      if (role === 'landlord' && !existingUser.isOwner) {
+        isUpgrade = true;
+      } else if ((role === 'tenant' || !role) && !existingUser.isTenant) {
+        isUpgrade = true;
+      }
+    }
+
+    if (mode === 'signup' && existingUser && isDbOnline && !isUpgrade) {
       return res.status(400).json({ error: 'User already exists with this email. Please log in.' });
     }
 
@@ -126,18 +135,32 @@ export const verifyOtp = async (req: Request, res: Response) => {
       let user = null;
       try {
         if (record.mode === 'signup') {
-           // Create the new user in DB
-           user = await prisma.user.create({
-             data: {
-               email: email,
-               firstName: record.firstName || '',
-               lastName: record.lastName || '',
-               isOwner: record.role === 'landlord',
-               isTenant: record.role === 'tenant' || !record.role,
-               nicFront: record.nicFront || null,
-               nicBack: record.nicBack || null
-             }
-           });
+           const existing = await prisma.user.findUnique({ where: { email } });
+           if (existing) {
+             // Upgrade existing user in DB
+             user = await prisma.user.update({
+               where: { email },
+               data: {
+                 isOwner: record.role === 'landlord' ? true : existing.isOwner,
+                 isTenant: (record.role === 'tenant' || !record.role) ? true : existing.isTenant,
+                 nicFront: record.nicFront || existing.nicFront,
+                 nicBack: record.nicBack || existing.nicBack
+               }
+             });
+           } else {
+             // Create the new user in DB
+             user = await prisma.user.create({
+               data: {
+                 email: email,
+                 firstName: record.firstName || '',
+                 lastName: record.lastName || '',
+                 isOwner: record.role === 'landlord',
+                 isTenant: record.role === 'tenant' || !record.role,
+                 nicFront: record.nicFront || null,
+                 nicBack: record.nicBack || null
+               }
+             });
+           }
         } else {
            // Login mode — fetch user
            user = await prisma.user.findUnique({ where: { email } });
@@ -216,6 +239,36 @@ export const verifyOtp = async (req: Request, res: Response) => {
   }
 };
 
+import cloudinary from '../config/cloudinary';
+
+const uploadToCloudinary = async (fileString: string, folder: string) => {
+  if (!fileString || !fileString.startsWith('data:image')) return fileString;
+  try {
+    const res = await cloudinary.uploader.upload(fileString, { folder });
+    return res.secure_url;
+  } catch (error) {
+    console.error('Cloudinary upload error:', error);
+    return fileString;
+  }
+};
+
+const deleteFromCloudinary = async (url: string) => {
+  if (!url || !url.includes('cloudinary.com')) return;
+  try {
+    const parts = url.split('/upload/');
+    if (parts.length === 2) {
+      const pathWithVersion = parts[1];
+      const withoutVersion = pathWithVersion.replace(/^v\d+\//, '');
+      const publicId = withoutVersion.substring(0, withoutVersion.lastIndexOf('.'));
+      if (publicId) {
+        await cloudinary.uploader.destroy(publicId);
+      }
+    }
+  } catch (error) {
+    console.error('Cloudinary delete error:', error);
+  }
+};
+
 export const updateProfile = async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
@@ -229,12 +282,29 @@ export const updateProfile = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Forbidden: You cannot modify another user\'s profile' });
     }
 
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let finalProfileImage = existingUser.profileImage;
+
+    // Check if the frontend sent a new base64 image
+    if (profileImage && profileImage.startsWith('data:image')) {
+      // If there's an existing image in Cloudinary, delete it
+      if (existingUser.profileImage) {
+        await deleteFromCloudinary(existingUser.profileImage);
+      }
+      // Upload the new image
+      finalProfileImage = await uploadToCloudinary(profileImage, 'stayzo/users');
+    }
+
     const updatedUser = await prisma.user.update({
       where: { email },
       data: {
-        firstName,
-        lastName,
-        profileImage
+        firstName: firstName || existingUser.firstName,
+        lastName: lastName || existingUser.lastName,
+        profileImage: finalProfileImage
       }
     });
 
