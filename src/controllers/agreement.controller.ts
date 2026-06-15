@@ -169,7 +169,9 @@ export const signAgreement = async (req: Request, res: Response) => {
       where: { id },
       data: {
         tenantSig,
-        status: 'Active' // Both landlord and tenant have signed now!
+        status: 'Active', // Both landlord and tenant have signed now!
+        savedInLandlordWallet: true,
+        savedInTenantWallet: true
       }
     });
 
