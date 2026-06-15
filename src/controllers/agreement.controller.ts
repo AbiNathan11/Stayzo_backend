@@ -156,3 +156,33 @@ export const signAgreement = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+// Save / unsave agreement in user's wallet
+export const saveToWallet = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { role, saved } = req.body; // role: 'landlord' | 'tenant', saved: boolean
+
+    if (role !== 'landlord' && role !== 'tenant') {
+      return res.status(400).json({ error: "Invalid role specified. Must be 'landlord' or 'tenant'." });
+    }
+
+    const updateData: any = {};
+    if (role === 'landlord') {
+      updateData.savedInLandlordWallet = saved !== undefined ? saved : true;
+    } else {
+      updateData.savedInTenantWallet = saved !== undefined ? saved : true;
+    }
+
+    const updated = await prisma.leaseAgreement.update({
+      where: { id },
+      data: updateData
+    });
+
+    res.status(200).json(updated);
+  } catch (error) {
+    console.error('Error saving agreement to wallet:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+

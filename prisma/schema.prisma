@@ -185,6 +185,8 @@ model LeaseAgreement {
   contractText    String   @db.Text
   landlordSig     String?  @db.Text
   tenantSig       String?  @db.Text
+  savedInLandlordWallet Boolean @default(false)
+  savedInTenantWallet   Boolean @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
