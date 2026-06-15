@@ -96,6 +96,35 @@ export const createProperty = async (req: Request, res: Response) => {
   }
 };
 
+// Helper to lazily resolve and cache coordinates in DB if missing
+async function ensurePropertyCoords(p: any) {
+  const parsedLat = Number(p.latitude);
+  const parsedLng = Number(p.longitude);
+  const hasCoords = !isNaN(parsedLat) && parsedLat !== 0 && !isNaN(parsedLng) && parsedLng !== 0;
+  if (hasCoords) {
+    return { lat: parsedLat, lng: parsedLng };
+  }
+
+  const fullAddress = [p.address, p.city, p.state, p.zipCode].filter(Boolean).join(', ');
+  if (!fullAddress.trim()) {
+    return { lat: null, lng: null };
+  }
+
+  try {
+    const coords = await geocodeAddress(fullAddress);
+    if (coords) {
+      await prisma.property.update({
+        where: { id: p.id },
+        data: { latitude: coords.lat, longitude: coords.lng },
+      });
+      return { lat: coords.lat, lng: coords.lng };
+    }
+  } catch (err) {
+    console.error(`Failed to geocode address for property ${p.id}:`, err);
+  }
+  return { lat: null, lng: null };
+}
+
 // ── Get All Properties (with basic inline noise prediction) ───────────────────
 
 export const getProperties = async (req: Request, res: Response) => {
@@ -108,11 +137,16 @@ export const getProperties = async (req: Request, res: Response) => {
     });
 
     // Attach lightweight noise prediction (no API calls) for every listing
-    const result = properties.map(p => ({
-      ...p,
-      noisePrediction: predictNoiseScoreBasic({
-        lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
-      } as NoisePredictionInput),
+    const result = await Promise.all(properties.map(async (p) => {
+      const coords = await ensurePropertyCoords(p);
+      p.latitude = coords.lat;
+      p.longitude = coords.lng;
+      return {
+        ...p,
+        noisePrediction: predictNoiseScoreBasic({
+          lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
+        } as NoisePredictionInput),
+      };
     }));
 
     res.status(200).json(result);
@@ -144,11 +178,16 @@ export const searchProperties = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    const result = properties.map(p => ({
-      ...p,
-      noisePrediction: predictNoiseScoreBasic({
-        lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
-      } as NoisePredictionInput),
+    const result = await Promise.all(properties.map(async (p) => {
+      const coords = await ensurePropertyCoords(p);
+      p.latitude = coords.lat;
+      p.longitude = coords.lng;
+      return {
+        ...p,
+        noisePrediction: predictNoiseScoreBasic({
+          lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
+        } as NoisePredictionInput),
+      };
     }));
 
     res.status(200).json(result);
@@ -171,6 +210,10 @@ export const getPropertyById = async (req: Request, res: Response) => {
     });
 
     if (!property) return res.status(404).json({ error: 'Property not found' });
+
+    const coords = await ensurePropertyCoords(property);
+    property.latitude = coords.lat;
+    property.longitude = coords.lng;
 
     // Full noise prediction (uses Places API when lat/lng are available)
     const noisePrediction = await predictNoiseScore({
@@ -205,11 +248,16 @@ export const getPropertiesByOwner = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    const result = properties.map(p => ({
-      ...p,
-      noisePrediction: predictNoiseScoreBasic({
-        lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
-      } as NoisePredictionInput),
+    const result = await Promise.all(properties.map(async (p) => {
+      const coords = await ensurePropertyCoords(p);
+      p.latitude = coords.lat;
+      p.longitude = coords.lng;
+      return {
+        ...p,
+        noisePrediction: predictNoiseScoreBasic({
+          lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
+        } as NoisePredictionInput),
+      };
     }));
 
     res.status(200).json(result);
