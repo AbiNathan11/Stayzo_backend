@@ -42,6 +42,31 @@ export const createAgreement = async (req: Request, res: Response) => {
       }
     });
 
+    // Create a notification for the tenant if they exist in the system
+    try {
+      const tenantUser = await prisma.user.findFirst({
+        where: { email: tenantEmail }
+      });
+      if (tenantUser) {
+        await prisma.notification.create({
+          data: {
+            userId: tenantUser.id,
+            title: 'New Lease Agreement Received',
+            message: `Landlord ${landlordName} has sent a lease agreement for ${listingName}. Please review and sign it.`,
+            type: 'Agreement'
+          }
+        });
+        
+        const io = (req.app as any).get('io');
+        if (io) {
+          io.emit('new_agreement', { tenantEmail, agreementId: newAgreement.id });
+          io.emit('notification', { userId: tenantUser.id });
+        }
+      }
+    } catch (notifErr) {
+      console.warn('Failed to send tenant lease notification:', notifErr);
+    }
+
     res.status(201).json(newAgreement);
   } catch (error) {
     console.error('Error creating lease agreement:', error);
@@ -149,6 +174,30 @@ export const signAgreement = async (req: Request, res: Response) => {
         status: 'Active' // Both landlord and tenant have signed now!
       }
     });
+
+    // Notify the landlord that the tenant has signed
+    try {
+      const landlordUser = await prisma.user.findFirst({
+        where: { email: agreement.landlordEmail }
+      });
+      if (landlordUser) {
+        await prisma.notification.create({
+          data: {
+            userId: landlordUser.id,
+            title: 'Lease Agreement Signed by Tenant',
+            message: `Tenant ${agreement.tenantName} has signed the lease agreement for ${agreement.listingName}.`,
+            type: 'Agreement'
+          }
+        });
+        
+        const io = (req.app as any).get('io');
+        if (io) {
+          io.emit('notification', { userId: landlordUser.id });
+        }
+      }
+    } catch (notifErr) {
+      console.warn('Failed to send landlord lease signature notification:', notifErr);
+    }
 
     res.status(200).json(updated);
   } catch (error) {
