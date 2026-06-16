@@ -50,6 +50,7 @@ model Property {
   sqft           Float
   type           String
   status         String             @default("Available")
+  isBoosted      Boolean            @default(false)
   images         String[]
   panoramaImage  String?
   amenities      String[]

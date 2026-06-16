@@ -410,3 +410,21 @@ export const togglePropertyStatus = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to toggle property status' });
   }
 };
+
+export const markPropertyAsBoosted = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const property = await prisma.property.findUnique({ where: { id } });
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+    const updated = await prisma.property.update({
+      where: { id },
+      data: { isBoosted: true }
+    });
+    res.status(200).json(updated);
+  } catch (error) {
+    console.error('Failed to mark property as boosted:', error);
+    res.status(500).json({ error: 'Failed to mark property as boosted' });
+  }
+};
