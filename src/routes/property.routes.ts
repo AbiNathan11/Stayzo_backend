@@ -7,7 +7,8 @@ import {
   searchProperties,
   updateProperty,
   getNearbyAmenities,
-  togglePropertyStatus
+  togglePropertyStatus,
+  markPropertyAsBoosted
 } from '../controllers/property.controller';
 import { authenticateJWT, requireOwner } from '../middlewares/auth.middleware';
 import { validateCreateProperty } from '../middlewares/validation.middleware';
@@ -23,5 +24,6 @@ router.get('/owner/:ownerId', authenticateJWT, getPropertiesByOwner);  // owner-
 router.get('/:id', getPropertyById);
 router.put('/:id', authenticateJWT, requireOwner, updateProperty);
 router.post('/:id/toggle-status', togglePropertyStatus);
+router.post('/:id/mark-boosted', markPropertyAsBoosted);
 
 export default router;
