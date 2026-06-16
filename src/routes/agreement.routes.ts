@@ -4,7 +4,8 @@ import {
   getAgreements,
   getAgreementById,
   signAgreement,
-  saveToWallet
+  saveToWallet,
+  deleteAgreement
 } from '../controllers/agreement.controller';
 
 const router = Router();
@@ -14,5 +15,6 @@ router.get('/', getAgreements);
 router.get('/:id', getAgreementById);
 router.put('/:id/sign', signAgreement);
 router.put('/:id/wallet', saveToWallet);
+router.delete('/:id', deleteAgreement);
 
 export default router;

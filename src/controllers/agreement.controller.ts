@@ -17,7 +17,8 @@ export const createAgreement = async (req: Request, res: Response) => {
       endDate,
       listingName,
       contractText,
-      landlordSig
+      landlordSig,
+      visualTheme
     } = req.body;
 
     if (!tenantName || !tenantEmail || !landlordName || !landlordEmail || !listingName || !contractText) {
@@ -38,9 +39,35 @@ export const createAgreement = async (req: Request, res: Response) => {
         listingName,
         contractText,
         landlordSig,
+        visualTheme: visualTheme || 'classic-legal',
         status: 'Pending Signatures'
       }
     });
+
+    // Create a notification for the tenant if they exist in the system
+    try {
+      const tenantUser = await prisma.user.findFirst({
+        where: { email: tenantEmail }
+      });
+      if (tenantUser) {
+        await prisma.notification.create({
+          data: {
+            userId: tenantUser.id,
+            title: 'New Lease Agreement Received',
+            message: `Landlord ${landlordName} has sent a lease agreement for ${listingName}. Please review and sign it.`,
+            type: 'Agreement'
+          }
+        });
+        
+        const io = (req.app as any).get('io');
+        if (io) {
+          io.emit('new_agreement', { tenantEmail, agreementId: newAgreement.id });
+          io.emit('notification', { userId: tenantUser.id });
+        }
+      }
+    } catch (notifErr) {
+      console.warn('Failed to send tenant lease notification:', notifErr);
+    }
 
     res.status(201).json(newAgreement);
   } catch (error) {
@@ -104,10 +131,6 @@ export const signAgreement = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Tenant signature is required to sign agreement.' });
     }
 
-    if (!nicFront || !nicBack) {
-      return res.status(400).json({ error: 'Both NIC Front and Back images are required to complete lease verification.' });
-    }
-
     const agreement = await prisma.leaseAgreement.findUnique({
       where: { id }
     });
@@ -116,26 +139,26 @@ export const signAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Lease agreement not found.' });
     }
 
-    // Apply diagonal watermark to secure uploaded identity cards
-    let watermarkedFront = nicFront;
-    let watermarkedBack = nicBack;
+    // Apply diagonal watermark to secure uploaded identity cards if provided
+    let watermarkedFront = nicFront || null;
+    let watermarkedBack = nicBack || null;
 
-    if (nicFront) {
+    if (nicFront && nicFront.startsWith('data:image')) {
       watermarkedFront = await watermarkImage(nicFront);
     }
-    if (nicBack) {
+    if (nicBack && nicBack.startsWith('data:image')) {
       watermarkedBack = await watermarkImage(nicBack);
     }
 
-    // Update the Tenant User record with watermarked identity cards
-    if (agreement.tenantEmail) {
+    // Update the Tenant User record with watermarked identity cards if provided
+    if (agreement.tenantEmail && (watermarkedFront || watermarkedBack)) {
       try {
+        const updateData: any = {};
+        if (watermarkedFront) updateData.nicFront = watermarkedFront;
+        if (watermarkedBack) updateData.nicBack = watermarkedBack;
         await prisma.user.update({
           where: { email: agreement.tenantEmail },
-          data: {
-            nicFront: watermarkedFront,
-            nicBack: watermarkedBack
-          }
+          data: updateData
         });
       } catch (userErr) {
         console.warn(`Could not update tenant user NIC copy (user may not have registered yet):`, userErr);
@@ -146,9 +169,35 @@ export const signAgreement = async (req: Request, res: Response) => {
       where: { id },
       data: {
         tenantSig,
-        status: 'Active' // Both landlord and tenant have signed now!
+        status: 'Active', // Both landlord and tenant have signed now!
+        savedInLandlordWallet: true,
+        savedInTenantWallet: true
       }
     });
+
+    // Notify the landlord that the tenant has signed
+    try {
+      const landlordUser = await prisma.user.findFirst({
+        where: { email: agreement.landlordEmail }
+      });
+      if (landlordUser) {
+        await prisma.notification.create({
+          data: {
+            userId: landlordUser.id,
+            title: 'Lease Agreement Signed by Tenant',
+            message: `Tenant ${agreement.tenantName} has signed the lease agreement for ${agreement.listingName}.`,
+            type: 'Agreement'
+          }
+        });
+        
+        const io = (req.app as any).get('io');
+        if (io) {
+          io.emit('notification', { userId: landlordUser.id });
+        }
+      }
+    } catch (notifErr) {
+      console.warn('Failed to send landlord lease signature notification:', notifErr);
+    }
 
     res.status(200).json(updated);
   } catch (error) {
@@ -182,6 +231,20 @@ export const saveToWallet = async (req: Request, res: Response) => {
     res.status(200).json(updated);
   } catch (error) {
     console.error('Error saving agreement to wallet:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// Delete Lease Agreement
+export const deleteAgreement = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await prisma.leaseAgreement.delete({
+      where: { id }
+    });
+    res.status(200).json({ message: 'Agreement deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting lease agreement:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
