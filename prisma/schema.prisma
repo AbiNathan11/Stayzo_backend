@@ -8,36 +8,36 @@ datasource db {
 }
 
 model User {
-  id                                   String             @id @default(uuid())
-  email                                String             @unique
-  firstName                            String?
-  lastName                             String?
-  createdAt                            DateTime           @default(now())
-  updatedAt                            DateTime           @updatedAt
-  isAdmin                              Boolean?           @default(false)
-  isOwner                              Boolean?           @default(false)
-  isTenant                             Boolean?           @default(false)
-  autoApprove                          Boolean            @default(false)
-  bufferTime                           Int                @default(0)
-  maxBookingsPerDay                    Int                @default(5)
-  slotDuration                         Int                @default(30)
-  profileImage                         String?
-  nicFront                             String?
-  nicBack                              String?
-  status                               String             @default("Active")
-  verified                             Boolean            @default(false)
-  ownedSlots                           AvailabilitySlot[] @relation("OwnerSlots")
-  tenantBookings                       Booking[]          @relation("TenantBookings")
-  chatMessages                         ChatMessage[]
-  ownedThreads                         ChatThread[]       @relation("ChatThread_ownerIdToUser")
-  tenantThreads                        ChatThread[]       @relation("ChatThread_tenantIdToUser")
-  notifications                        Notification[]
-  properties                           Property[]
-  tenantAgreements                     LeaseAgreement[]   @relation("TenantAgreements")
-  landlordAgreements                   LeaseAgreement[]   @relation("LandlordAgreements")
-  reviews                              Review[]           @relation("AuthorReviews")
-  transactions                         Transaction[]      @relation("UserTransactions")
-  contactMessages                      ContactMessage[]   @relation("UserMessages")
+  id                                             String             @id @default(uuid())
+  email                                          String             @unique
+  firstName                                      String?
+  lastName                                       String?
+  createdAt                                      DateTime           @default(now())
+  updatedAt                                      DateTime           @updatedAt
+  isAdmin                                        Boolean?           @default(false)
+  isOwner                                        Boolean?           @default(false)
+  isTenant                                       Boolean?           @default(false)
+  autoApprove                                    Boolean            @default(false)
+  bufferTime                                     Int                @default(0)
+  maxBookingsPerDay                              Int                @default(5)
+  slotDuration                                   Int                @default(30)
+  profileImage                                   String?
+  nicBack                                        String?
+  nicFront                                       String?
+  status                                         String             @default("Active")
+  verified                                       Boolean            @default(false)
+  ownedSlots                                     AvailabilitySlot[] @relation("OwnerSlots")
+  tenantBookings                                 Booking[]          @relation("TenantBookings")
+  chatMessages                                   ChatMessage[]
+  ownedThreads                                   ChatThread[]       @relation("ChatThread_ownerIdToUser")
+  tenantThreads                                  ChatThread[]       @relation("ChatThread_tenantIdToUser")
+  ContactMessage                                 ContactMessage[]
+  LeaseAgreement_LeaseAgreement_landlordIdToUser LeaseAgreement[]   @relation("LeaseAgreement_landlordIdToUser")
+  LeaseAgreement_LeaseAgreement_tenantIdToUser   LeaseAgreement[]   @relation("LeaseAgreement_tenantIdToUser")
+  notifications                                  Notification[]
+  properties                                     Property[]
+  Review                                         Review[]
+  Transaction                                    Transaction[]
 }
 
 model Property {
@@ -55,7 +55,6 @@ model Property {
   sqft           Float
   type           String
   status         String             @default("Available")
-  isBoosted      Boolean            @default(false)
   images         String[]
   panoramaImage  String?
   amenities      String[]
@@ -64,13 +63,14 @@ model Property {
   waterBillImage String?
   latitude       Float?
   longitude      Float?
+  isBoosted      Boolean            @default(false)
   slots          AvailabilitySlot[]
   bookings       Booking[]
   chatThreads    ChatThread[]
-  leaseAgreements LeaseAgreement[]  @relation("PropertyAgreements")
-  reviews        Review[]           @relation("PropertyReviews")
-  transactions   Transaction[]      @relation("PropertyTransactions")
+  LeaseAgreement LeaseAgreement[]
   owner          User               @relation(fields: [ownerId], references: [id])
+  Review         Review[]
+  Transaction    Transaction[]
 }
 
 model AvailabilitySlot {
@@ -126,10 +126,10 @@ model Otp {
   firstName String?
   lastName  String?
   mode      String
-  role      String?
-  nicFront  String?
-  nicBack   String?
   createdAt DateTime @default(now())
+  nicBack   String?
+  nicFront  String?
+  role      String?
 }
 
 model ChatMessage {
@@ -139,8 +139,8 @@ model ChatMessage {
   text               String
   isRead             Boolean    @default(false)
   createdAt          DateTime   @default(now())
-  translatedText     String?
   translatedLanguage String?
+  translatedText     String?
   sender             User       @relation(fields: [senderId], references: [id], onDelete: Cascade)
   thread             ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 }
@@ -160,13 +160,6 @@ model ChatThread {
   @@unique([tenantId, ownerId, propertyId])
 }
 
-enum BookingStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
-  COMPLETED
-}
-
 model ContactMessage {
   id        String   @id @default(uuid())
   fullName  String
@@ -178,73 +171,79 @@ model ContactMessage {
   user      User?    @relation("UserMessages", fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  userId    String?
+  User      User?    @relation(fields: [userId], references: [id])
 }
 
 model LeaseAgreement {
-  id              String   @id @default(uuid())
-  tenantName      String
-  tenantEmail     String
-  landlordName    String
-  landlordEmail   String
-  monthlyRent     Float
-  securityDeposit Float
-  termLength      String
-  startDate       String
-  endDate         String
-  status          String   @default("Pending Signatures")
-  listingName     String
-  contractText    String   @db.Text
-  landlordSig     String?  @db.Text
-  tenantSig       String?  @db.Text
-  visualTheme     String?  @default("classic-legal")
-  savedInLandlordWallet Boolean @default(false)
-  savedInTenantWallet   Boolean @default(false)
-  tenantId        String?
-  landlordId      String?
-  propertyId      String?
-  tenantUser      User?     @relation("TenantAgreements", fields: [tenantId], references: [id])
-  landlordUser    User?     @relation("LandlordAgreements", fields: [landlordId], references: [id])
-  property        Property? @relation("PropertyAgreements", fields: [propertyId], references: [id])
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                                   String    @id @default(uuid())
+  tenantName                           String
+  tenantEmail                          String
+  landlordName                         String
+  landlordEmail                        String
+  monthlyRent                          Float
+  securityDeposit                      Float
+  termLength                           String
+  startDate                            String
+  endDate                              String
+  status                               String    @default("Pending Signatures")
+  listingName                          String
+  contractText                         String
+  landlordSig                          String?
+  tenantSig                            String?
+  createdAt                            DateTime  @default(now())
+  updatedAt                            DateTime  @updatedAt
+  savedInLandlordWallet                Boolean   @default(false)
+  savedInTenantWallet                  Boolean   @default(false)
+  visualTheme                          String?   @default("classic-legal")
+  landlordId                           String?
+  propertyId                           String?
+  tenantId                             String?
+  User_LeaseAgreement_landlordIdToUser User?     @relation("LeaseAgreement_landlordIdToUser", fields: [landlordId], references: [id])
+  Property                             Property? @relation(fields: [propertyId], references: [id])
+  User_LeaseAgreement_tenantIdToUser   User?     @relation("LeaseAgreement_tenantIdToUser", fields: [tenantId], references: [id])
 }
 
 model Review {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   authorName  String
   authorEmail String
   rating      Int
   sentiment   String
   comment     String
   targetName  String
-  likes       Int      @default(0)
-  status      String   @default("Pending")
+  likes       Int       @default(0)
+  status      String    @default("Pending")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   authorId    String?
   propertyId  String?
-  author      User?    @relation("AuthorReviews", fields: [authorId], references: [id])
-  property    Property? @relation("PropertyReviews", fields: [propertyId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  User        User?     @relation(fields: [authorId], references: [id])
+  Property    Property? @relation(fields: [propertyId], references: [id])
 }
 
 model Transaction {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   type          String
   amount        Float
   user          String
   email         String
   targetListing String
-  status        String   @default("Pending")
+  status        String    @default("Pending")
   reference     String
   paymentMethod String
   ipAddress     String
-  userId        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   propertyId    String?
-  userRelation  User?     @relation("UserTransactions", fields: [userId], references: [id])
-  property      Property? @relation("PropertyTransactions", fields: [propertyId], references: [id])
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  userId        String?
+  Property      Property? @relation(fields: [propertyId], references: [id])
+  User          User?     @relation(fields: [userId], references: [id])
 }
 
-
-
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
