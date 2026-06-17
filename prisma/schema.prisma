@@ -33,6 +33,11 @@ model User {
   tenantThreads                        ChatThread[]       @relation("ChatThread_tenantIdToUser")
   notifications                        Notification[]
   properties                           Property[]
+  tenantAgreements                     LeaseAgreement[]   @relation("TenantAgreements")
+  landlordAgreements                   LeaseAgreement[]   @relation("LandlordAgreements")
+  reviews                              Review[]           @relation("AuthorReviews")
+  transactions                         Transaction[]      @relation("UserTransactions")
+  contactMessages                      ContactMessage[]   @relation("UserMessages")
 }
 
 model Property {
@@ -62,6 +67,9 @@ model Property {
   slots          AvailabilitySlot[]
   bookings       Booking[]
   chatThreads    ChatThread[]
+  leaseAgreements LeaseAgreement[]  @relation("PropertyAgreements")
+  reviews        Review[]           @relation("PropertyReviews")
+  transactions   Transaction[]      @relation("PropertyTransactions")
   owner          User               @relation(fields: [ownerId], references: [id])
 }
 
@@ -166,6 +174,8 @@ model ContactMessage {
   subject   String?  @default("General Inquiry")
   message   String
   status    String   @default("Unread")
+  userId    String?
+  user      User?    @relation("UserMessages", fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -189,6 +199,12 @@ model LeaseAgreement {
   visualTheme     String?  @default("classic-legal")
   savedInLandlordWallet Boolean @default(false)
   savedInTenantWallet   Boolean @default(false)
+  tenantId        String?
+  landlordId      String?
+  propertyId      String?
+  tenantUser      User?     @relation("TenantAgreements", fields: [tenantId], references: [id])
+  landlordUser    User?     @relation("LandlordAgreements", fields: [landlordId], references: [id])
+  property        Property? @relation("PropertyAgreements", fields: [propertyId], references: [id])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -203,6 +219,10 @@ model Review {
   targetName  String
   likes       Int      @default(0)
   status      String   @default("Pending")
+  authorId    String?
+  propertyId  String?
+  author      User?    @relation("AuthorReviews", fields: [authorId], references: [id])
+  property    Property? @relation("PropertyReviews", fields: [propertyId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -218,6 +238,10 @@ model Transaction {
   reference     String
   paymentMethod String
   ipAddress     String
+  userId        String?
+  propertyId    String?
+  userRelation  User?     @relation("UserTransactions", fields: [userId], references: [id])
+  property      Property? @relation("PropertyTransactions", fields: [propertyId], references: [id])
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
