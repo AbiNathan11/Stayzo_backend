@@ -32,7 +32,7 @@ export const createProperty = async (req: Request, res: Response) => {
       address, city, state, zipCode,
       bedrooms, bathrooms, sqft, type,
       images, panoramaImage, waterBillImage, amenities,
-      latitude, longitude,
+      latitude, longitude, transactionData
     } = req.body;
 
     if (!ownerId || !title || !price) {
@@ -88,6 +88,24 @@ export const createProperty = async (req: Request, res: Response) => {
         longitude: lng,
       },
     });
+
+    if (transactionData) {
+      await prisma.transaction.create({
+        data: {
+          type: 'Listing Fee',
+          amount: parseFloat(transactionData.amount) || 0,
+          user: ownerId,
+          email: transactionData.email || 'N/A',
+          targetListing: property.title,
+          status: 'Completed',
+          reference: transactionData.reference || 'N/A',
+          paymentMethod: transactionData.paymentMethod || 'PayHere Sandbox',
+          ipAddress: req.ip || '0.0.0.0',
+          propertyId: property.id,
+          userId: ownerId
+        }
+      });
+    }
 
     res.status(201).json(property);
   } catch (error: any) {
