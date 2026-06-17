@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../config/db';
 import OpenAI from 'openai';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
+import { encryptMessage, decryptMessage } from '../utils/crypto.util';
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || 'dummy_key', // This is just a fallback for types if not provided
 });
@@ -98,6 +99,13 @@ export const getThreadDetails = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Forbidden: Access denied to this thread' });
     }
 
+    // Decrypt messages for the client
+    thread.messages = thread.messages.map(msg => ({
+      ...msg,
+      text: decryptMessage(msg.text),
+      translatedText: msg.translatedText ? decryptMessage(msg.translatedText) : msg.translatedText
+    }));
+
     return res.status(200).json({ thread });
   } catch (error) {
     console.error('getThreadDetails error:', error);
@@ -137,7 +145,17 @@ export const getUserThreads = async (req: Request, res: Response) => {
           orderBy: { updatedAt: 'desc' }
         });
 
-    return res.status(200).json({ threads });
+    // Decrypt the preview messages
+    const decryptedThreads = threads.map(thread => ({
+      ...thread,
+      messages: thread.messages.map(msg => ({
+        ...msg,
+        text: decryptMessage(msg.text),
+        translatedText: msg.translatedText ? decryptMessage(msg.translatedText) : msg.translatedText
+      }))
+    }));
+
+    return res.status(200).json({ threads: decryptedThreads });
   } catch (error) {
     console.error('getUserThreads error:', error);
     return res.status(500).json({ error: 'Internal server error', details: error instanceof Error ? error.message : String(error) });
@@ -167,11 +185,13 @@ export const sendMessage = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Forbidden: You are not a participant in this thread' });
     }
 
+    const encryptedText = encryptMessage(text);
+
     const message = await prisma.chatMessage.create({
       data: {
         threadId: id,
         senderId,
-        text,
+        text: encryptedText,
       }
     });
 
@@ -180,6 +200,9 @@ export const sendMessage = async (req: Request, res: Response) => {
       where: { id },
       data: { updatedAt: new Date() }
     });
+
+    // Decrypt the message before returning to sender so their UI is correct
+    message.text = text;
 
     return res.status(201).json({ message });
   } catch (error) {
@@ -214,8 +237,13 @@ export const translateMessage = async (req: Request, res: Response) => {
 
     // If it's already translated to this language, just return it
     if (message.translatedLanguage === targetLanguage && message.translatedText) {
+      message.text = decryptMessage(message.text);
+      message.translatedText = decryptMessage(message.translatedText);
       return res.status(200).json({ message });
     }
+
+    // Decrypt the original message text for OpenAI
+    const decryptedText = decryptMessage(message.text);
 
     // Call OpenAI for translation
     const systemPrompt = `You are an expert bilingual translator for a real estate property rental platform in Sri Lanka.
@@ -227,20 +255,25 @@ Translate the following chat message accurately into ${targetLanguage}.
     const completion = await openai.chat.completions.create({
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Message to translate:\n"${message.text}"` }
+        { role: 'user', content: `Message to translate:\n"${decryptedText}"` }
       ],
       model: 'gpt-4o', // Upgraded to gpt-4o for parity with ChatGPT's translation accuracy
     });
 
-    const translatedText = completion.choices[0]?.message?.content?.trim() || message.text;
+    const translatedText = completion.choices[0]?.message?.content?.trim() || decryptedText;
+    const encryptedTranslatedText = encryptMessage(translatedText);
 
     const updatedMessage = await prisma.chatMessage.update({
       where: { id },
       data: {
-        translatedText,
+        translatedText: encryptedTranslatedText,
         translatedLanguage: targetLanguage,
       },
     });
+
+    // Return plaintext to the frontend
+    updatedMessage.text = decryptedText;
+    updatedMessage.translatedText = translatedText;
 
     return res.status(200).json({ message: updatedMessage });
   } catch (error) {
