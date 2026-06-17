@@ -167,6 +167,8 @@ model ContactMessage {
   subject   String?  @default("General Inquiry")
   message   String
   status    String   @default("Unread")
+  userId    String?
+  user      User?    @relation("UserMessages", fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   userId    String?
