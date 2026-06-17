@@ -414,17 +414,50 @@ export const togglePropertyStatus = async (req: Request, res: Response) => {
 export const markPropertyAsBoosted = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const property = await prisma.property.findUnique({ where: { id } });
+    const { 
+      amount, 
+      paymentMethod, 
+      reference,
+      status,
+      email,
+      userId
+    } = req.body;
+
+    const property = await prisma.property.findUnique({ where: { id }, include: { owner: true } });
     if (!property) {
       return res.status(404).json({ error: 'Property not found' });
     }
+
+    if (property.isBoosted) {
+      return res.status(200).json(property); // Already boosted, prevent duplicate transaction
+    }
+
+    // 1. Update Property status
     const updated = await prisma.property.update({
       where: { id },
       data: { isBoosted: true }
     });
+
+    // 2. Create Transaction Record
+    await prisma.transaction.create({
+      data: {
+        type: 'Listing Boost',
+        amount: parseFloat(amount) || 500,
+        user: userId || property.ownerId,
+        email: email || property.owner?.email || 'N/A',
+        targetListing: property.title,
+        status: status || 'Completed',
+        reference: reference || 'N/A',
+        paymentMethod: paymentMethod || 'PayHere Sandbox',
+        ipAddress: req.ip || '0.0.0.0',
+        propertyId: property.id,
+        userId: userId || property.ownerId
+      }
+    });
+
     res.status(200).json(updated);
   } catch (error) {
-    console.error('Failed to mark property as boosted:', error);
+    console.error('Failed to mark property as boosted and record transaction:', error);
     res.status(500).json({ error: 'Failed to mark property as boosted' });
   }
 };
