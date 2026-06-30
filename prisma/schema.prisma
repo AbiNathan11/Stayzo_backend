@@ -168,11 +168,9 @@ model ContactMessage {
   message   String
   status    String   @default("Unread")
   userId    String?
-  user      User?    @relation("UserMessages", fields: [userId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  userId    String?
-  User      User?    @relation(fields: [userId], references: [id])
 }
 
 model LeaseAgreement {
