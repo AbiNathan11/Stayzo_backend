@@ -190,7 +190,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
         let last = record.lastName || 'User';
         let isAdmin = false;
         let isOwner = false;
-        if (lowerEmail === 'adminstayzo@gmail.com' || lowerEmail.startsWith('admin@')) {
+        if (lowerEmail === 'adminstayzo@gmail.com' || lowerEmail === 'stayzoavp@gmail.com' || lowerEmail.startsWith('admin@')) {
           first = 'Admin';
           last = 'Stayzo';
           isAdmin = true;
@@ -217,7 +217,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
           email: user?.email, 
           firstName: user?.firstName, 
           lastName: user?.lastName,
-          isAdmin: user?.isAdmin,
+          isAdmin: user?.isAdmin || email.toLowerCase() === 'adminstayzo@gmail.com' || email.toLowerCase() === 'stayzoavp@gmail.com' || email.toLowerCase().startsWith('admin@'),
           isOwner: user?.isOwner,
           isTenant: user?.isTenant
         }, 
