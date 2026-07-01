@@ -211,7 +211,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
       }
       
       // Generate JWT Token
-      const token = jwt.sign(
+      const stayzo_token = jwt.sign(
         { 
           id: user?.id, 
           email: user?.email, 
@@ -222,12 +222,19 @@ export const verifyOtp = async (req: Request, res: Response) => {
           isTenant: user?.isTenant
         }, 
         process.env.JWT_SECRET || 'fallback_secret', 
+        { expiresIn: '1h' }
+      );
+      
+      const stayzo_refresh_token = jwt.sign(
+        { id: user?.id, email: user?.email },
+        process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret',
         { expiresIn: '7d' }
       );
       
       res.status(200).json({ 
         message: record.mode === 'signup' ? 'Signup successful' : 'Login successful',
-        token,
+        stayzo_token,
+        stayzo_refresh_token,
         user: { email: user?.email, firstName: user?.firstName, lastName: user?.lastName }
       });
     } else {
