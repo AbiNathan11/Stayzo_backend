@@ -53,18 +53,39 @@ export const findOrCreateThread = async (req: Request, res: Response) => {
     });
 
     if (!thread) {
-      thread = await prisma.chatThread.create({
-        data: {
-          tenantId,
-          ownerId,
-          propertyId,
-        },
-        include: {
-          property: true,
-          owner: true,
-          tenant: true
+      try {
+        thread = await prisma.chatThread.create({
+          data: {
+            tenantId,
+            ownerId,
+            propertyId,
+          },
+          include: {
+            property: true,
+            owner: true,
+            tenant: true
+          }
+        });
+      } catch (err: any) {
+        if (err.code === 'P2002') {
+          thread = await prisma.chatThread.findUnique({
+            where: {
+              tenantId_ownerId_propertyId: {
+                tenantId,
+                ownerId,
+                propertyId,
+              }
+            },
+            include: {
+              property: true,
+              owner: true,
+              tenant: true
+            }
+          });
+        } else {
+          throw err;
         }
-      });
+      }
     }
 
     return res.status(200).json({ thread });
