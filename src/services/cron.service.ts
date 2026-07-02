@@ -11,8 +11,95 @@ function addMinutes(time: string, mins: number): string {
   return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
 }
 
-export function startCronJobs() {
+export async function generateTodayBookingReminders(io?: any) {
+  console.log('⏰ Running job to generate today\'s booking reminders...');
+  try {
+    const now = new Date();
+    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+    const todayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+
+    const todaysBookings = await prisma.booking.findMany({
+      where: {
+        status: 'CONFIRMED',
+        slot: {
+          date: {
+            gte: todayStart,
+            lte: todayEnd,
+          },
+        },
+      },
+      include: {
+        slot: true,
+        property: { select: { title: true, ownerId: true } },
+        tenant: { select: { firstName: true, lastName: true, id: true } },
+      },
+    });
+
+    console.log(`Found ${todaysBookings.length} confirmed bookings scheduled for today.`);
+
+    for (const booking of todaysBookings) {
+      // 1. Tenant Reminder
+      const tenantNotifExists = await prisma.notification.findFirst({
+        where: {
+          userId: booking.tenantId,
+          bookingId: booking.id,
+          type: 'booking_reminder'
+        }
+      });
+      if (!tenantNotifExists) {
+        await prisma.notification.create({
+          data: {
+            userId: booking.tenantId,
+            title: 'Visit Scheduled Today',
+            message: `Reminder: You have a scheduled visit for ${booking.property.title} today at ${booking.slot.startTime}.`,
+            type: 'booking_reminder',
+            bookingId: booking.id
+          }
+        });
+        if (io) {
+          io.emit('notification', { userId: booking.tenantId });
+        }
+      }
+
+      // 2. Owner Reminder
+      const ownerNotifExists = await prisma.notification.findFirst({
+        where: {
+          userId: booking.property.ownerId,
+          bookingId: booking.id,
+          type: 'booking_reminder'
+        }
+      });
+      if (!ownerNotifExists) {
+        const tenantName = `${booking.tenant.firstName || ''} ${booking.tenant.lastName || ''}`.trim();
+        await prisma.notification.create({
+          data: {
+            userId: booking.property.ownerId,
+            title: 'Visit Scheduled Today',
+            message: `Reminder: Tenant ${tenantName} is scheduled to visit ${booking.property.title} today at ${booking.slot.startTime}.`,
+            type: 'booking_reminder',
+            bookingId: booking.id
+          }
+        });
+        if (io) {
+          io.emit('notification', { userId: booking.property.ownerId });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error generating today\'s booking reminders:', error);
+  }
+}
+
+export function startCronJobs(io?: any) {
   console.log('⏳ Starting background cron jobs...');
+
+  // Generate today's reminders on startup
+  generateTodayBookingReminders(io);
+
+  // 3. Daily Booking Reminders (Runs daily at 12:05 AM)
+  cron.schedule('5 0 * * *', () => {
+    generateTodayBookingReminders(io);
+  });
 
   // 1. Extend Recurring Slots (Runs every Sunday at Midnight)
   cron.schedule('0 0 * * 0', async () => {

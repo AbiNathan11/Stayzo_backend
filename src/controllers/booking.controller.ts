@@ -10,12 +10,16 @@ async function createNotification(
   title: string,
   message: string,
   type: string,
-  bookingId?: string
+  bookingId?: string,
+  io?: any
 ) {
   try {
     await prisma.notification.create({
       data: { userId, title, message, type, bookingId }
     });
+    if (io) {
+      io.emit('notification', { userId });
+    }
   } catch (err) {
     console.warn('Failed to create notification:', err);
   }
@@ -108,6 +112,7 @@ export const createBooking = async (req: AuthenticatedRequest, res: Response) =>
     }
 
     const { booking, slot, initialStatus } = result;
+    const io = (req.app as any).get('io');
 
     // Notify owner
     const tenantName = `${booking.tenant.firstName || ''} ${booking.tenant.lastName || ''}`.trim();
@@ -116,7 +121,8 @@ export const createBooking = async (req: AuthenticatedRequest, res: Response) =>
       'New Booking Request',
       `${tenantName} requested a visit for ${booking.property.title} on ${slot.date.toDateString()} at ${slot.startTime}`,
       'booking_request',
-      booking.id
+      booking.id,
+      io
     );
 
     // If auto-approved, notify tenant
@@ -126,12 +132,36 @@ export const createBooking = async (req: AuthenticatedRequest, res: Response) =>
         'Booking Confirmed!',
         `Your visit for ${booking.property.title} on ${slot.date.toDateString()} at ${slot.startTime} is confirmed.`,
         'booking_confirmed',
-        booking.id
+        booking.id,
+        io
       );
+
+      // Check if scheduled date is today to remind them
+      const now = new Date();
+      const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+      const todayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+      const slotDate = new Date(slot.date);
+      if (slotDate >= todayStart && slotDate <= todayEnd) {
+        await createNotification(
+          tenantId,
+          'Visit Scheduled Today',
+          `Reminder: You have a scheduled visit for ${booking.property.title} today at ${slot.startTime}.`,
+          'booking_reminder',
+          booking.id,
+          io
+        );
+        await createNotification(
+          slot.property.ownerId,
+          'Visit Scheduled Today',
+          `Reminder: Tenant ${tenantName} is scheduled to visit ${booking.property.title} today at ${slot.startTime}.`,
+          'booking_reminder',
+          booking.id,
+          io
+        );
+      }
     }
 
     // Emit socket event (attached to req.app)
-    const io = (req.app as any).get('io');
     if (io) {
       io.emit('new_booking_request', {
         ownerId: slot.property.ownerId,
@@ -206,7 +236,7 @@ export const approveBooking = async (req: AuthenticatedRequest, res: Response) =
       include: {
         slot: true,
         property: { select: { title: true, ownerId: true } },
-        tenant: { select: { firstName: true, email: true } }
+        tenant: { select: { firstName: true, lastName: true, email: true } }
       }
     });
 
@@ -219,15 +249,42 @@ export const approveBooking = async (req: AuthenticatedRequest, res: Response) =
       data: { status: 'CONFIRMED' }
     });
 
+    const io = (req.app as any).get('io');
+
     await createNotification(
       booking.tenantId,
       'Booking Confirmed!',
       `Your visit for ${booking.property.title} on ${booking.slot.date.toDateString()} at ${booking.slot.startTime} is confirmed.`,
       'booking_confirmed',
-      id
+      id,
+      io
     );
 
-    const io = (req.app as any).get('io');
+    // Check if scheduled date is today to remind them
+    const now = new Date();
+    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+    const todayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+    const slotDate = new Date(booking.slot.date);
+    if (slotDate >= todayStart && slotDate <= todayEnd) {
+      const tenantName = `${booking.tenant.firstName || ''} ${booking.tenant.lastName || ''}`.trim();
+      await createNotification(
+        booking.tenantId,
+        'Visit Scheduled Today',
+        `Reminder: You have a scheduled visit for ${booking.property.title} today at ${booking.slot.startTime}.`,
+        'booking_reminder',
+        id,
+        io
+      );
+      await createNotification(
+        booking.property.ownerId,
+        'Visit Scheduled Today',
+        `Reminder: Tenant ${tenantName} is scheduled to visit ${booking.property.title} today at ${booking.slot.startTime}.`,
+        'booking_reminder',
+        id,
+        io
+      );
+    }
+
     if (io) {
       io.emit('booking_update', { bookingId: id, tenantId: booking.tenantId, status: 'CONFIRMED' });
     }
@@ -262,15 +319,17 @@ export const rejectBooking = async (req: AuthenticatedRequest, res: Response) =>
       data: { status: 'CANCELLED' }
     });
 
+    const io = (req.app as any).get('io');
+
     await createNotification(
       booking.tenantId,
       'Booking Not Approved',
       `Your visit request for ${booking.property.title} was not approved by the owner.`,
       'booking_cancelled',
-      id
+      id,
+      io
     );
 
-    const io = (req.app as any).get('io');
     if (io) {
       io.emit('booking_update', { bookingId: id, tenantId: booking.tenantId, status: 'CANCELLED' });
     }
@@ -308,6 +367,8 @@ export const cancelBooking = async (req: AuthenticatedRequest, res: Response) =>
       data: { status: 'CANCELLED' }
     });
 
+    const io = (req.app as any).get('io');
+
     // Notify the other party
     const notifyUserId = isTenant ? booking.property.ownerId : booking.tenantId;
     const cancelledBy = isTenant ? `Tenant ${booking.tenant.firstName}` : 'The owner';
@@ -316,10 +377,10 @@ export const cancelBooking = async (req: AuthenticatedRequest, res: Response) =>
       'Booking Cancelled',
       `${cancelledBy} cancelled the visit for ${booking.property.title} on ${booking.slot.date.toDateString()} at ${booking.slot.startTime}.`,
       'booking_cancelled',
-      id
+      id,
+      io
     );
 
-    const io = (req.app as any).get('io');
     if (io) {
       io.emit('booking_update', { bookingId: id, tenantId: booking.tenantId, ownerId: booking.property.ownerId, status: 'CANCELLED' });
     }
@@ -375,14 +436,55 @@ export const rescheduleBooking = async (req: AuthenticatedRequest, res: Response
       data: { slotId: newSlotId, status: newStatus }
     });
 
+    const io = (req.app as any).get('io');
+
     // Notify owner of reschedule
     await createNotification(
       booking.property.ownerId,
       'Booking Rescheduled',
       `A booking for ${booking.property.title} was rescheduled to ${newSlot.date.toDateString()} at ${newSlot.startTime}.`,
       'booking_request',
-      id
+      id,
+      io
     );
+
+    // If it becomes confirmed and the date is today, create today's reminders
+    if (newStatus === 'CONFIRMED') {
+      const now = new Date();
+      const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+      const todayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+
+      const slotDate = new Date(newSlot.date);
+      if (slotDate >= todayStart && slotDate <= todayEnd) {
+        // Fetch tenant details to get the name
+        const tenant = await prisma.user.findUnique({
+          where: { id: booking.tenantId },
+          select: { firstName: true, lastName: true }
+        });
+        const tenantName = `${tenant?.firstName || ''} ${tenant?.lastName || ''}`.trim();
+        
+        await createNotification(
+          booking.tenantId,
+          'Visit Scheduled Today',
+          `Reminder: You have a scheduled visit for ${booking.property.title} today at ${newSlot.startTime}.`,
+          'booking_reminder',
+          id,
+          io
+        );
+        await createNotification(
+          booking.property.ownerId,
+          'Visit Scheduled Today',
+          `Reminder: Tenant ${tenantName} is scheduled to visit ${booking.property.title} today at ${newSlot.startTime}.`,
+          'booking_reminder',
+          id,
+          io
+        );
+      }
+    }
+
+    if (io) {
+      io.emit('booking_update', { bookingId: id, tenantId: booking.tenantId, ownerId: booking.property.ownerId, status: newStatus });
+    }
 
     res.status(200).json(updated);
   } catch (error) {
