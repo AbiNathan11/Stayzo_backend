@@ -2,6 +2,12 @@ import { Response } from 'express';
 import { prisma } from '../config/db';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { addDays, format, parseISO, startOfDay } from 'date-fns';
+import fs from 'fs';
+
+// Helper to log debug info to a file
+function logDebug(message: string) {
+  console.log(message);
+}
 
 // Helper: add minutes to a "HH:MM" string → return "HH:MM"
 function addMinutes(time: string, mins: number): string {
@@ -16,11 +22,18 @@ function addMinutes(time: string, mins: number): string {
 export const createSlot = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const ownerId = (req.user as any)?.id;
+    logDebug(`createSlot: ownerId=${ownerId} body=${JSON.stringify(req.body)}`);
     if (!ownerId) return res.status(401).json({ error: 'Unauthorized' });
 
     const { propertyId, date, startTime, endTime, slotDuration, bufferTime, maxBookings } = req.body;
     if (!propertyId || !date || !startTime || !endTime) {
+      logDebug('createSlot: Missing required fields');
       return res.status(400).json({ error: 'propertyId, date, startTime, endTime are required' });
+    }
+
+    if (endTime <= startTime) {
+      logDebug(`createSlot: Invalid time range: startTime=${startTime} endTime=${endTime}`);
+      return res.status(400).json({ error: 'End time must be after start time' });
     }
 
     // Prevent creating slots in the past
@@ -30,52 +43,89 @@ export const createSlot = async (req: AuthenticatedRequest, res: Response) => {
     const [h, m] = startTime.split(':').map(Number);
     const slotDateTime = new Date(year, month - 1, day, h, m, 0);
     if (slotDateTime < now) {
+      logDebug(`createSlot: Past time slot slotDateTime=${slotDateTime.toISOString()} now=${now.toISOString()}`);
       return res.status(400).json({ error: 'Cannot create availability in the past' });
     }
 
-    // Verify property belongs to owner
-    const property = await prisma.property.findFirst({ where: { id: propertyId, ownerId } });
-    if (!property) return res.status(403).json({ error: 'Property not found or not owned by you' });
+    // Verify property exists
+    const property = await prisma.property.findFirst({ where: { id: propertyId } });
+    if (!property) {
+      logDebug(`createSlot: Property not found: ${propertyId}`);
+      return res.status(404).json({ error: 'Property not found' });
+    }
 
+    // Verify property belongs to owner, or caller is Admin
+    const isAdmin = (req.user as any)?.isAdmin;
+    if (property.ownerId !== ownerId && !isAdmin) {
+      logDebug(`createSlot: Property not owned by user property.ownerId=${property.ownerId} ownerId=${ownerId}`);
+      return res.status(403).json({ error: 'Property not found or not owned by you' });
+    }
+
+    const finalOwnerId = isAdmin ? property.ownerId : ownerId;
     const duration = slotDuration || 30;
     const buffer = bufferTime || 0;
     const slotDate = new Date(`${date.split('T')[0]}T00:00:00.000Z`);
 
-    // Generate individual slots within the time window
-    const createdSlots = [];
+    // Generate all target slot time windows in memory
+    const candidateSlots: { startTime: string; endTime: string }[] = [];
     let currentStart = startTime;
-
     while (true) {
       const currentEnd = addMinutes(currentStart, duration);
       if (currentEnd > endTime) break;
-
-      // Check for duplicate slot on same date/time
-      const existing = await prisma.availabilitySlot.findFirst({
-        where: { propertyId, date: slotDate, startTime: currentStart, isBlocked: false }
-      });
-
-      if (!existing) {
-        const slot = await prisma.availabilitySlot.create({
-          data: {
-            propertyId,
-            ownerId,
-            date: slotDate,
-            startTime: currentStart,
-            endTime: currentEnd,
-            slotDuration: duration,
-            bufferTime: buffer,
-            maxBookings: maxBookings || 1,
-          }
-        });
-        createdSlots.push(slot);
+      candidateSlots.push({ startTime: currentStart, endTime: currentEnd });
+      
+      const nextStart = addMinutes(currentStart, duration + buffer);
+      // Safety check to prevent infinite loop if duration + buffer is 0
+      if (nextStart <= currentStart) {
+        break; 
       }
-
-      // Advance by duration + buffer
-      currentStart = addMinutes(currentStart, duration + buffer);
+      currentStart = nextStart;
     }
 
+    // Single query to get all existing slots on this date
+    const existingSlots = await prisma.availabilitySlot.findMany({
+      where: {
+        propertyId,
+        date: slotDate,
+        isBlocked: false,
+        startTime: { in: candidateSlots.map(c => c.startTime) }
+      }
+    });
+    const existingStartTimes = new Set(existingSlots.map(s => s.startTime));
+
+    // Filter candidate slots
+    const newSlotsToCreate = candidateSlots.filter(c => !existingStartTimes.has(c.startTime));
+
+    const createdSlots = [];
+    if (newSlotsToCreate.length > 0) {
+      await prisma.availabilitySlot.createMany({
+        data: newSlotsToCreate.map(s => ({
+          propertyId,
+          ownerId: finalOwnerId,
+          date: slotDate,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          slotDuration: duration,
+          bufferTime: buffer,
+          maxBookings: maxBookings || 1,
+        }))
+      });
+
+      // Fetch the created slots to return them to the client
+      const created = await prisma.availabilitySlot.findMany({
+        where: {
+          propertyId,
+          date: slotDate,
+          startTime: { in: newSlotsToCreate.map(s => s.startTime) }
+        }
+      });
+      createdSlots.push(...created);
+    }
+
+    logDebug(`createSlot: Successfully created ${createdSlots.length} slots`);
     res.status(201).json({ message: `${createdSlots.length} slot(s) created`, slots: createdSlots });
   } catch (error) {
+    logDebug(`createSlot error: ${error}`);
     console.error('createSlot error:', error);
     res.status(500).json({ error: 'Failed to create slot' });
   }
@@ -85,11 +135,18 @@ export const createSlot = async (req: AuthenticatedRequest, res: Response) => {
 export const createRecurringSlots = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const ownerId = (req.user as any)?.id;
+    logDebug(`createRecurringSlots: ownerId=${ownerId} body=${JSON.stringify(req.body)}`);
     if (!ownerId) return res.status(401).json({ error: 'Unauthorized' });
 
     const { propertyId, dayOfWeek, startTime, endTime, slotDuration, bufferTime, weeksAhead } = req.body;
     if (!propertyId || dayOfWeek === undefined || !startTime || !endTime) {
+      logDebug('createRecurringSlots: Missing required fields');
       return res.status(400).json({ error: 'propertyId, dayOfWeek, startTime, endTime are required' });
+    }
+
+    if (endTime <= startTime) {
+      logDebug(`createRecurringSlots: Invalid time range: startTime=${startTime} endTime=${endTime}`);
+      return res.status(400).json({ error: 'End time must be after start time' });
     }
 
     // Find the next occurrence of dayOfWeek from today
@@ -106,55 +163,103 @@ export const createRecurringSlots = async (req: AuthenticatedRequest, res: Respo
       const [h, m] = startTime.split(':').map(Number);
       const slotDateTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), h, m, 0);
       if (slotDateTime < today) {
+        logDebug('createRecurringSlots: past start datetime');
         return res.status(400).json({ error: 'Cannot create recurring availability starting in the past' });
       }
     }
 
-    const property = await prisma.property.findFirst({ where: { id: propertyId, ownerId } });
-    if (!property) return res.status(403).json({ error: 'Property not found or not owned by you' });
+    const property = await prisma.property.findFirst({ where: { id: propertyId } });
+    if (!property) {
+      logDebug(`createRecurringSlots: Property not found: ${propertyId}`);
+      return res.status(404).json({ error: 'Property not found' });
+    }
 
+    const isAdmin = (req.user as any)?.isAdmin;
+    if (property.ownerId !== ownerId && !isAdmin) {
+      logDebug(`createRecurringSlots: Property not owned by user property.ownerId=${property.ownerId} ownerId=${ownerId}`);
+      return res.status(403).json({ error: 'Property not found or not owned by you' });
+    }
+
+    const finalOwnerId = isAdmin ? property.ownerId : ownerId;
     const duration = slotDuration || 30;
     const buffer = bufferTime || 0;
     const weeks = weeksAhead || 8;
 
-    const allCreated = [];
+    // Generate all candidate slots in memory across N weeks
+    const targetDates: Date[] = [];
+    const candidateSlots: { date: Date; startTime: string; endTime: string }[] = [];
+
     for (let w = 0; w < weeks; w++) {
       const d = addDays(start, w * 7);
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const slotDate = new Date(`${dateStr}T00:00:00.000Z`);
-      let currentStart = startTime;
+      targetDates.push(slotDate);
 
+      let currentStart = startTime;
       while (true) {
         const currentEnd = addMinutes(currentStart, duration);
         if (currentEnd > endTime) break;
-
-        const existing = await prisma.availabilitySlot.findFirst({
-          where: { propertyId, date: slotDate, startTime: currentStart }
-        });
-
-        if (!existing) {
-          const slot = await prisma.availabilitySlot.create({
-            data: {
-              propertyId,
-              ownerId,
-              date: slotDate,
-              startTime: currentStart,
-              endTime: currentEnd,
-              slotDuration: duration,
-              bufferTime: buffer,
-              isRecurring: true,
-              recurringDay: dayOfWeek,
-              maxBookings: 1,
-            }
-          });
-          allCreated.push(slot);
+        candidateSlots.push({ date: slotDate, startTime: currentStart, endTime: currentEnd });
+        
+        const nextStart = addMinutes(currentStart, duration + buffer);
+        if (nextStart <= currentStart) {
+          break;
         }
-        currentStart = addMinutes(currentStart, duration + buffer);
+        currentStart = nextStart;
       }
     }
 
+    // Query once to find all existing slots on these target dates
+    const existingSlots = await prisma.availabilitySlot.findMany({
+      where: {
+        propertyId,
+        date: { in: targetDates }
+      }
+    });
+
+    const getLookupKey = (d: Date, startTime: string) => {
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return `${dateStr}:${startTime}`;
+    };
+
+    const existingKeys = new Set(existingSlots.map(s => getLookupKey(s.date, s.startTime)));
+
+    // Filter candidate slots
+    const newSlotsToCreate = candidateSlots.filter(c => !existingKeys.has(getLookupKey(c.date, c.startTime)));
+
+    const allCreated = [];
+    if (newSlotsToCreate.length > 0) {
+      await prisma.availabilitySlot.createMany({
+        data: newSlotsToCreate.map(c => ({
+          propertyId,
+          ownerId: finalOwnerId,
+          date: c.date,
+          startTime: c.startTime,
+          endTime: c.endTime,
+          slotDuration: duration,
+          bufferTime: buffer,
+          isRecurring: true,
+          recurringDay: dayOfWeek,
+          maxBookings: 1,
+        }))
+      });
+
+      // Fetch all created slots on target dates
+      const created = await prisma.availabilitySlot.findMany({
+        where: {
+          propertyId,
+          date: { in: targetDates },
+          isRecurring: true,
+          recurringDay: dayOfWeek,
+        }
+      });
+      allCreated.push(...created);
+    }
+
+    logDebug(`createRecurringSlots: Successfully created ${allCreated.length} slots`);
     res.status(201).json({ message: `${allCreated.length} recurring slot(s) created`, slots: allCreated });
   } catch (error) {
+    logDebug(`createRecurringSlots error: ${error}`);
     console.error('createRecurringSlots error:', error);
     res.status(500).json({ error: 'Failed to create recurring slots' });
   }
@@ -164,6 +269,7 @@ export const createRecurringSlots = async (req: AuthenticatedRequest, res: Respo
 export const blockDates = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const ownerId = (req.user as any)?.id;
+    logDebug(`blockDates: ownerId=${ownerId} body=${JSON.stringify(req.body)}`);
     if (!ownerId) return res.status(401).json({ error: 'Unauthorized' });
 
     const { propertyId, startDate, endDate } = req.body;
@@ -174,12 +280,23 @@ export const blockDates = async (req: AuthenticatedRequest, res: Response) => {
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const startStr = startDate.split('T')[0];
     if (startStr < todayStr) {
+      logDebug(`blockDates: Past date blocking startStr=${startStr} todayStr=${todayStr}`);
       return res.status(400).json({ error: 'Cannot block dates in the past' });
     }
 
-    const property = await prisma.property.findFirst({ where: { id: propertyId, ownerId } });
-    if (!property) return res.status(403).json({ error: 'Property not found or not owned by you' });
+    const property = await prisma.property.findFirst({ where: { id: propertyId } });
+    if (!property) {
+      logDebug(`blockDates: Property not found: ${propertyId}`);
+      return res.status(404).json({ error: 'Property not found' });
+    }
 
+    const isAdmin = (req.user as any)?.isAdmin;
+    if (property.ownerId !== ownerId && !isAdmin) {
+      logDebug(`blockDates: Property not owned by user property.ownerId=${property.ownerId} ownerId=${ownerId}`);
+      return res.status(403).json({ error: 'Property not found or not owned by you' });
+    }
+
+    const finalOwnerId = isAdmin ? property.ownerId : ownerId;
     const from = new Date(`${startDate.split('T')[0]}T00:00:00.000Z`);
     const to = endDate ? new Date(`${endDate.split('T')[0]}T00:00:00.000Z`) : from;
 
@@ -190,7 +307,7 @@ export const blockDates = async (req: AuthenticatedRequest, res: Response) => {
       await prisma.availabilitySlot.create({
         data: {
           propertyId,
-          ownerId,
+          ownerId: finalOwnerId,
           date: d,
           startTime: '00:00',
           endTime: '23:59',
@@ -201,10 +318,58 @@ export const blockDates = async (req: AuthenticatedRequest, res: Response) => {
       count++;
     }
 
+    logDebug(`blockDates: Blocked ${count} dates`);
     res.status(201).json({ message: `${count} date(s) blocked` });
   } catch (error) {
+    logDebug(`blockDates error: ${error}`);
     console.error('blockDates error:', error);
     res.status(500).json({ error: 'Failed to block dates' });
+  }
+};
+
+// POST /api/availability/unblock — unblock a date (or range) for a property
+export const unblockDates = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const ownerId = (req.user as any)?.id;
+    logDebug(`unblockDates: ownerId=${ownerId} body=${JSON.stringify(req.body)}`);
+    if (!ownerId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { propertyId, startDate, endDate } = req.body;
+    if (!propertyId || !startDate) return res.status(400).json({ error: 'propertyId and startDate are required' });
+
+    const property = await prisma.property.findFirst({ where: { id: propertyId } });
+    if (!property) {
+      logDebug(`unblockDates: Property not found: ${propertyId}`);
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    const isAdmin = (req.user as any)?.isAdmin;
+    if (property.ownerId !== ownerId && !isAdmin) {
+      logDebug(`unblockDates: Property not owned by user property.ownerId=${property.ownerId} ownerId=${ownerId}`);
+      return res.status(403).json({ error: 'Property not found or not owned by you' });
+    }
+
+    const from = new Date(`${startDate.split('T')[0]}T00:00:00.000Z`);
+    const to = endDate ? new Date(`${endDate.split('T')[0]}T00:00:00.000Z`) : from;
+
+    // Delete all blocked placeholder slots in the date range
+    const result = await prisma.availabilitySlot.deleteMany({
+      where: {
+        propertyId,
+        isBlocked: true,
+        date: {
+          gte: from,
+          lte: to
+        }
+      }
+    });
+
+    logDebug(`unblockDates: Unblocked ${result.count} dates`);
+    res.status(200).json({ message: `${result.count} date(s) unblocked` });
+  } catch (error) {
+    logDebug(`unblockDates error: ${error}`);
+    console.error('unblockDates error:', error);
+    res.status(500).json({ error: 'Failed to unblock dates' });
   }
 };
 
@@ -245,7 +410,14 @@ export const getOwnerSlots = async (req: AuthenticatedRequest, res: Response) =>
     if (!ownerId) return res.status(401).json({ error: 'Unauthorized' });
 
     const { propertyId, from, to } = req.query;
-    const where: any = { ownerId };
+    const isAdmin = (req.user as any)?.isAdmin;
+    const where: any = {};
+    if (!isAdmin) {
+      where.ownerId = ownerId;
+    } else if (req.query.ownerId) {
+      where.ownerId = req.query.ownerId as string;
+    }
+    
     if (propertyId) where.propertyId = propertyId as string;
     if (from || to) {
       where.date = {};
@@ -276,7 +448,13 @@ export const updateSlot = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const ownerId = (req.user as any)?.id;
     const { id } = req.params;
-    const slot = await prisma.availabilitySlot.findFirst({ where: { id, ownerId } });
+    const isAdmin = (req.user as any)?.isAdmin;
+    const where: any = { id };
+    if (!isAdmin) {
+      where.ownerId = ownerId;
+    }
+
+    const slot = await prisma.availabilitySlot.findFirst({ where });
     if (!slot) return res.status(404).json({ error: 'Slot not found or not owned by you' });
 
     const updated = await prisma.availabilitySlot.update({
@@ -302,7 +480,13 @@ export const deleteSlot = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const ownerId = (req.user as any)?.id;
     const { id } = req.params;
-    const slot = await prisma.availabilitySlot.findFirst({ where: { id, ownerId } });
+    const isAdmin = (req.user as any)?.isAdmin;
+    const where: any = { id };
+    if (!isAdmin) {
+      where.ownerId = ownerId;
+    }
+
+    const slot = await prisma.availabilitySlot.findFirst({ where });
     if (!slot) return res.status(404).json({ error: 'Slot not found or not owned by you' });
 
     await prisma.availabilitySlot.delete({ where: { id } });
