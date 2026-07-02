@@ -3,6 +3,12 @@ import { BookingStatus, Prisma } from '@prisma/client';
 import { prisma } from '../config/db';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { sendOTPEmail } from '../services/email.service';
+import fs from 'fs';
+
+// Helper to log debug info to a file since we cannot view the terminal output directly
+function logDebug(message: string) {
+  console.log(message);
+}
 
 // Helper to create a notification + emit socket event
 async function createNotification(
@@ -27,15 +33,23 @@ async function createNotification(
 
 // POST /api/bookings — tenant creates a booking request
 export const createBooking = async (req: AuthenticatedRequest, res: Response) => {
+  logDebug(`createBooking: start. tenantId=${(req.user as any)?.id} body=${JSON.stringify(req.body)}`);
   try {
     const tenantId = (req.user as any)?.id;
-    if (!tenantId) return res.status(401).json({ error: 'Unauthorized' });
+    if (!tenantId) {
+      logDebug(`createBooking: tenantId missing`);
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     const { slotId, note } = req.body;
-    if (!slotId) return res.status(400).json({ error: 'slotId is required' });
+    if (!slotId) {
+      logDebug(`createBooking: slotId missing`);
+      return res.status(400).json({ error: 'slotId is required' });
+    }
 
     let result;
     try {
+      logDebug(`createBooking: entering transaction with slotId=${slotId}`);
       result = await prisma.$transaction(async (tx) => {
         // Get slot with owner's settings
         const slot = await tx.availabilitySlot.findUnique({
@@ -98,7 +112,8 @@ export const createBooking = async (req: AuthenticatedRequest, res: Response) =>
 
         return { booking, slot, initialStatus };
       }, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        timeout: 20000
       });
     } catch (err: any) {
       if (err.message === 'Slot not found') return res.status(404).json({ error: err.message });
@@ -174,7 +189,8 @@ export const createBooking = async (req: AuthenticatedRequest, res: Response) =>
     }
 
     res.status(201).json(booking);
-  } catch (error) {
+  } catch (error: any) {
+    logDebug(`createBooking error: ${error.message} - ${error.stack}`);
     console.error('createBooking error:', error);
     res.status(500).json({ error: 'Failed to create booking' });
   }

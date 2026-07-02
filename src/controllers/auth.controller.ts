@@ -222,7 +222,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
           isTenant: user?.isTenant
         }, 
         process.env.JWT_SECRET || 'fallback_secret', 
-        { expiresIn: '1h' }
+        { expiresIn: '7d' }
       );
       
       const stayzo_refresh_token = jwt.sign(

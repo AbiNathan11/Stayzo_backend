@@ -138,11 +138,9 @@ export const validateCreateProperty = (req: Request, res: Response, next: NextFu
 };
 
 export const validateCreateBooking = (req: Request, res: Response, next: NextFunction) => {
-  const { slotId, tenantId, propertyId, note } = req.body;
+  const { slotId, note } = req.body;
 
   if (!slotId) return res.status(400).json({ error: 'slotId is required' });
-  if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
-  if (!propertyId) return res.status(400).json({ error: 'propertyId is required' });
 
   req.body.note = note ? sanitizeString(note) : '';
 

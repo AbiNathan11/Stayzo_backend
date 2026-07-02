@@ -3,6 +3,7 @@ import {
   createSlot,
   createRecurringSlots,
   blockDates,
+  unblockDates,
   getSlotsByProperty,
   getOwnerSlots,
   updateSlot,
@@ -26,6 +27,7 @@ router.get('/settings', getOwnerSettings);
 router.post('/', createSlot);
 router.post('/recurring', createRecurringSlots);
 router.post('/block', blockDates);
+router.post('/unblock', unblockDates);
 router.patch('/settings', updateOwnerSettings);
 router.patch('/:id', updateSlot);
 router.delete('/:id', deleteSlot);
