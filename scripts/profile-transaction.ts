@@ -1,13 +1,9 @@
 import { PrismaClient } from '@prisma/client';
+import dotenv from 'dotenv';
+dotenv.config();
 
-const directUrl = 'postgresql://neondb_owner:npg_ErgKQHq1A7Cd@ep-delicate-snow-ap05mbc7.c-7.us-east-1.aws.neon.tech/neondb?sslmode=require';
-const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: directUrl
-    }
-  }
-});
+// Uses DATABASE_URL from .env – now pointing to AWS RDS
+const prisma = new PrismaClient();
 
 async function main() {
   console.log('Profiling queries...');
