@@ -33,6 +33,14 @@ export const createTransaction = async (req: Request, res: Response) => {
 export const getTransactions = async (req: Request, res: Response) => {
   try {
     const transactions = await prisma.transaction.findMany({
+      include: {
+        User: {
+          select: {
+            firstName: true,
+            lastName: true
+          }
+        }
+      },
       orderBy: { createdAt: 'desc' }
     });
     res.status(200).json(transactions);

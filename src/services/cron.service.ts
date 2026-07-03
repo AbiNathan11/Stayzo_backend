@@ -192,5 +192,94 @@ export function startCronJobs(io?: any) {
     }
   });
 
+  // 4. Check for Expired Agreements on startup and runs daily at 12:10 AM
+  checkExpiredAgreements(io);
+  cron.schedule('10 0 * * *', () => {
+    checkExpiredAgreements(io);
+  });
+
   console.log('✅ Cron jobs initialized.');
+}
+
+export async function checkExpiredAgreements(io?: any) {
+  console.log('🔄 Checking for expired lease agreements...');
+  try {
+    const activeAgreements = await prisma.leaseAgreement.findMany({
+      where: {
+        status: 'Active'
+      }
+    });
+
+    const now = new Date();
+
+    for (const agreement of activeAgreements) {
+      if (!agreement.endDate) continue;
+
+      const parsedEndDate = Date.parse(agreement.endDate);
+      if (isNaN(parsedEndDate)) {
+        console.warn(`Could not parse end date string: "${agreement.endDate}" for agreement ${agreement.id}`);
+        continue;
+      }
+
+      const endDateObj = new Date(parsedEndDate);
+      // set to end of the day for expiration check (23:59:59.999)
+      endDateObj.setHours(23, 59, 59, 999);
+
+      if (endDateObj < now) {
+        console.log(`Agreement ${agreement.id} has expired (End date: ${agreement.endDate}). Updating status to Expired...`);
+
+        // Update status to 'Expired'
+        await prisma.leaseAgreement.update({
+          where: { id: agreement.id },
+          data: { status: 'Expired' }
+        });
+
+        // 1. Notify Landlord
+        let landlordUser = null;
+        if (agreement.landlordId) {
+          landlordUser = await prisma.user.findUnique({ where: { id: agreement.landlordId } });
+        } else {
+          landlordUser = await prisma.user.findFirst({ where: { email: agreement.landlordEmail } });
+        }
+
+        if (landlordUser) {
+          await prisma.notification.create({
+            data: {
+              userId: landlordUser.id,
+              title: 'Lease Agreement Expired 📜',
+              message: `The lease agreement for ${agreement.listingName} with tenant ${agreement.tenantName} has expired.`,
+              type: 'Agreement'
+            }
+          });
+          if (io) {
+            io.emit('notification', { userId: landlordUser.id });
+          }
+        }
+
+        // 2. Notify Tenant
+        let tenantUser = null;
+        if (agreement.tenantId) {
+          tenantUser = await prisma.user.findUnique({ where: { id: agreement.tenantId } });
+        } else {
+          tenantUser = await prisma.user.findFirst({ where: { email: agreement.tenantEmail } });
+        }
+
+        if (tenantUser) {
+          await prisma.notification.create({
+            data: {
+              userId: tenantUser.id,
+              title: 'Lease Agreement Expired 📜',
+              message: `Your lease agreement for ${agreement.listingName} with landlord ${agreement.landlordName} has expired.`,
+              type: 'Agreement'
+            }
+          });
+          if (io) {
+            io.emit('notification', { userId: tenantUser.id });
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error checking expired lease agreements:', error);
+  }
 }
