@@ -164,7 +164,8 @@ export const verifyOtp = async (req: Request, res: Response) => {
                  firstName: record.firstName || '',
                  lastName: record.lastName || '',
                  isOwner: record.role === 'landlord',
-                 isTenant: record.role === 'tenant' || !record.role,
+                 isTenant: true,
+                 isAdmin: false,
                  nicFront: record.nicFront || null,
                  nicBack: record.nicBack || null
                }
