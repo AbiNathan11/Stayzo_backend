@@ -16,7 +16,7 @@ export const findOrCreateThread = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'tenantId and propertyId are required' });
     }
 
-    if (authReq.user?.id !== tenantId && !authReq.user?.isAdmin) {
+    if (String(authReq.user?.id) !== String(tenantId) && !authReq.user?.isAdmin) {
       return res.status(403).json({ error: 'Forbidden: You can only start threads as yourself' });
     }
 
@@ -116,7 +116,7 @@ export const getThreadDetails = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Thread not found' });
     }
 
-    if (authReq.user?.id !== thread.tenantId && authReq.user?.id !== thread.ownerId && !authReq.user?.isAdmin) {
+    if (String(authReq.user?.id) !== String(thread.tenantId) && String(authReq.user?.id) !== String(thread.ownerId) && !authReq.user?.isAdmin) {
       return res.status(403).json({ error: 'Forbidden: Access denied to this thread' });
     }
 
@@ -193,7 +193,7 @@ export const sendMessage = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'senderId and text are required' });
     }
 
-    if (authReq.user?.id !== senderId && !authReq.user?.isAdmin) {
+    if (String(authReq.user?.id) !== String(senderId) && !authReq.user?.isAdmin) {
       return res.status(403).json({ error: 'Forbidden: You cannot send messages as someone else' });
     }
 
@@ -202,7 +202,7 @@ export const sendMessage = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Thread not found' });
     }
 
-    if (authReq.user?.id !== thread.tenantId && authReq.user?.id !== thread.ownerId && !authReq.user?.isAdmin) {
+    if (String(authReq.user?.id) !== String(thread.tenantId) && String(authReq.user?.id) !== String(thread.ownerId) && !authReq.user?.isAdmin) {
       return res.status(403).json({ error: 'Forbidden: You are not a participant in this thread' });
     }
 
@@ -252,7 +252,7 @@ export const translateMessage = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Associated thread not found' });
     }
 
-    if (authReq.user?.id !== thread.tenantId && authReq.user?.id !== thread.ownerId && !authReq.user?.isAdmin) {
+    if (String(authReq.user?.id) !== String(thread.tenantId) && String(authReq.user?.id) !== String(thread.ownerId) && !authReq.user?.isAdmin) {
       return res.status(403).json({ error: 'Forbidden: You are not a participant in this thread' });
     }
 

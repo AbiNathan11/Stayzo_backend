@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/db';
-import cloudinary from '../config/cloudinary';
+import { uploadToS3 } from '../utils/s3Upload';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import {
   geocodeAddress,
@@ -10,18 +10,8 @@ import {
   NoisePredictionInput,
 } from '../services/noise.service';
 
-// ── Cloudinary helper ─────────────────────────────────────────────────────────
-
-const uploadToCloudinary = async (fileString: string, folder: string) => {
-  if (!fileString || !fileString.startsWith('data:image')) return fileString;
-  try {
-    const res = await cloudinary.uploader.upload(fileString, { folder });
-    return res.secure_url;
-  } catch (error) {
-    console.error('Cloudinary upload error:', error);
-    return fileString;
-  }
-};
+// ── AWS S3 upload helper (alias for consistent call sites) ────────────────────
+const uploadToCloudinary = uploadToS3;
 
 // ── Create Property ───────────────────────────────────────────────────────────
 
@@ -39,14 +29,14 @@ export const createProperty = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'ownerId, title, and price are required' });
     }
 
-    // Upload images to Cloudinary concurrently
-    const uploadedPanorama = await uploadToCloudinary(panoramaImage, 'stayzo/panoramas');
-    const uploadedWaterBill = await uploadToCloudinary(waterBillImage, 'stayzo/waterbills');
+    // Upload images to AWS S3 concurrently
+    const uploadedPanorama = await uploadToS3(panoramaImage, 'stayzo/panoramas');
+    const uploadedWaterBill = await uploadToS3(waterBillImage, 'stayzo/waterbills');
 
     let uploadedImages: string[] = [];
     if (images && Array.isArray(images) && images.length > 0) {
       uploadedImages = await Promise.all(
-        images.map((img: string) => uploadToCloudinary(img, 'stayzo/properties'))
+        images.map((img: string) => uploadToS3(img, 'stayzo/properties'))
       );
     }
 
@@ -257,7 +247,7 @@ export const getPropertiesByOwner = async (req: Request, res: Response) => {
 
     if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
 
-    if (authReq.user?.id !== ownerId && !authReq.user?.isAdmin) {
+    if (String(authReq.user?.id) !== String(ownerId) && !authReq.user?.isAdmin) {
       return res.status(403).json({ error: 'Forbidden: Access denied to these listings' });
     }
 
@@ -331,14 +321,14 @@ export const updateProperty = async (req: Request, res: Response) => {
       }
     }
 
-    // Handle image uploads
-    const uploadedPanorama  = panoramaImage  ? await uploadToCloudinary(panoramaImage,  'stayzo/panoramas')  : existing.panoramaImage;
-    const uploadedWaterBill = waterBillImage ? await uploadToCloudinary(waterBillImage, 'stayzo/waterbills') : existing.waterBillImage;
+    // Handle image uploads to AWS S3
+    const uploadedPanorama  = panoramaImage  ? await uploadToS3(panoramaImage,  'stayzo/panoramas')  : existing.panoramaImage;
+    const uploadedWaterBill = waterBillImage ? await uploadToS3(waterBillImage, 'stayzo/waterbills') : existing.waterBillImage;
 
     let uploadedImages: string[] = existing.images;
     if (images && Array.isArray(images) && images.length > 0) {
       uploadedImages = await Promise.all(
-        images.map((img: string) => uploadToCloudinary(img, 'stayzo/properties'))
+        images.map((img: string) => uploadToS3(img, 'stayzo/properties'))
       );
     }
 

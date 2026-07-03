@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../config/db';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { watermarkImage } from '../utils/watermark';
+import { uploadToS3 } from '../utils/s3Upload';
 
 // We now use Prisma for OTP storage instead of an in-memory Map
 
@@ -64,27 +65,35 @@ export const sendOtp = async (req: Request, res: Response) => {
       }
     }
 
-    // Apply diagonal watermark to secure uploaded identity cards
-    let watermarkedFront = nicFront || null;
-    let watermarkedBack = nicBack || null;
+    // Apply diagonal watermark to secure uploaded identity cards, then upload to AWS S3
+    let nicFrontUrl: string | null = null;
+    let nicBackUrl: string | null = null;
 
     if (nicFront) {
-      watermarkedFront = await watermarkImage(nicFront);
+      const watermarkedFront = await watermarkImage(nicFront);
+      // Upload watermarked NIC front to S3 — only the URL goes into DB
+      const uploaded = await uploadToS3(watermarkedFront, 'stayzo/nic-documents');
+      nicFrontUrl = uploaded.startsWith('https://') ? uploaded : null;
+      if (!nicFrontUrl) console.warn('NIC front S3 upload failed for:', email);
     }
     if (nicBack) {
-      watermarkedBack = await watermarkImage(nicBack);
+      const watermarkedBack = await watermarkImage(nicBack);
+      // Upload watermarked NIC back to S3
+      const uploaded = await uploadToS3(watermarkedBack, 'stayzo/nic-documents');
+      nicBackUrl = uploaded.startsWith('https://') ? uploaded : null;
+      if (!nicBackUrl) console.warn('NIC back S3 upload failed for:', email);
     }
 
     const otp = generateOTP();
     
-    // Store OTP with 10 mins expiry in the database
+    // Store OTP with 10 mins expiry — NIC fields now hold S3 URLs, not raw base64
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     
     // Upsert so if they request multiple times, it just updates the existing record
     await prisma.otp.upsert({
       where: { email },
-      update: { otp, expiresAt, firstName, lastName, mode, role: role || 'tenant', nicFront: watermarkedFront, nicBack: watermarkedBack },
-      create: { email, otp, expiresAt, firstName: firstName || null, lastName: lastName || null, mode, role: role || 'tenant', nicFront: watermarkedFront, nicBack: watermarkedBack }
+      update: { otp, expiresAt, firstName, lastName, mode, role: role || 'tenant', nicFront: nicFrontUrl, nicBack: nicBackUrl },
+      create: { email, otp, expiresAt, firstName: firstName || null, lastName: lastName || null, mode, role: role || 'tenant', nicFront: nicFrontUrl, nicBack: nicBackUrl }
     });
 
     // Check if EMAIL_USER is configured, otherwise simulate
@@ -246,35 +255,11 @@ export const verifyOtp = async (req: Request, res: Response) => {
   }
 };
 
-import cloudinary from '../config/cloudinary';
+// Profile image upload goes to AWS S3
+const uploadProfileImageToS3 = (fileString: string) => uploadToS3(fileString, 'stayzo/users');
 
-const uploadToCloudinary = async (fileString: string, folder: string) => {
-  if (!fileString || !fileString.startsWith('data:image')) return fileString;
-  try {
-    const res = await cloudinary.uploader.upload(fileString, { folder });
-    return res.secure_url;
-  } catch (error) {
-    console.error('Cloudinary upload error:', error);
-    return fileString;
-  }
-};
-
-const deleteFromCloudinary = async (url: string) => {
-  if (!url || !url.includes('cloudinary.com')) return;
-  try {
-    const parts = url.split('/upload/');
-    if (parts.length === 2) {
-      const pathWithVersion = parts[1];
-      const withoutVersion = pathWithVersion.replace(/^v\d+\//, '');
-      const publicId = withoutVersion.substring(0, withoutVersion.lastIndexOf('.'));
-      if (publicId) {
-        await cloudinary.uploader.destroy(publicId);
-      }
-    }
-  } catch (error) {
-    console.error('Cloudinary delete error:', error);
-  }
-};
+// Old S3 objects are left in place (no-op) – use S3 lifecycle rules or manual cleanup
+const deleteOldProfileImage = async (_url: string) => { /* no-op: managed via S3 lifecycle */ };
 
 export const updateProfile = async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
@@ -285,7 +270,7 @@ export const updateProfile = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email is required' });
     }
 
-    if (authReq.user?.email !== email && !authReq.user?.isAdmin) {
+    if (authReq.user?.email?.toLowerCase() !== email?.toLowerCase() && !authReq.user?.isAdmin) {
       return res.status(403).json({ error: 'Forbidden: You cannot modify another user\'s profile' });
     }
 
@@ -298,12 +283,12 @@ export const updateProfile = async (req: Request, res: Response) => {
 
     // Check if the frontend sent a new base64 image
     if (profileImage && profileImage.startsWith('data:image')) {
-      // If there's an existing image in Cloudinary, delete it
+      // Remove old profile image from S3 (no-op; managed by S3 lifecycle rules)
       if (existingUser.profileImage) {
-        await deleteFromCloudinary(existingUser.profileImage);
+        await deleteOldProfileImage(existingUser.profileImage);
       }
-      // Upload the new image
-      finalProfileImage = await uploadToCloudinary(profileImage, 'stayzo/users');
+      // Upload the new image to AWS S3
+      finalProfileImage = await uploadProfileImageToS3(profileImage);
     }
 
     const updatedUser = await prisma.user.update({
@@ -339,7 +324,7 @@ export const getProfile = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email is required' });
     }
 
-    if (authReq.user?.email !== email && !authReq.user?.isAdmin) {
+    if (authReq.user?.email?.toLowerCase() !== email?.toLowerCase() && !authReq.user?.isAdmin) {
       return res.status(403).json({ error: 'Forbidden: You cannot view another user\'s profile' });
     }
 
