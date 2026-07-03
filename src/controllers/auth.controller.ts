@@ -143,6 +143,9 @@ export const verifyOtp = async (req: Request, res: Response) => {
       
       let user = null;
       try {
+        const lowerEmail = email.toLowerCase();
+        const isEmailAdmin = lowerEmail === 'adminstayzo@gmail.com' || lowerEmail === 'stayzoavp@gmail.com' || lowerEmail.startsWith('admin@');
+
         if (record.mode === 'signup') {
            const existing = await prisma.user.findUnique({ where: { email } });
            if (existing) {
@@ -150,8 +153,9 @@ export const verifyOtp = async (req: Request, res: Response) => {
              user = await prisma.user.update({
                where: { email },
                data: {
-                 isOwner: record.role === 'landlord' ? true : existing.isOwner,
-                 isTenant: (record.role === 'tenant' || !record.role) ? true : existing.isTenant,
+                 isAdmin: isEmailAdmin ? true : existing.isAdmin,
+                 isOwner: isEmailAdmin ? false : (record.role === 'landlord' ? true : existing.isOwner),
+                 isTenant: isEmailAdmin ? false : ((record.role === 'tenant' || !record.role) ? true : existing.isTenant),
                  nicFront: record.nicFront || existing.nicFront,
                  nicBack: record.nicBack || existing.nicBack
                }
@@ -163,8 +167,9 @@ export const verifyOtp = async (req: Request, res: Response) => {
                  email: email,
                  firstName: record.firstName || '',
                  lastName: record.lastName || '',
-                 isOwner: record.role === 'landlord',
-                 isTenant: record.role === 'tenant' || !record.role,
+                 isAdmin: isEmailAdmin,
+                 isOwner: isEmailAdmin ? false : record.role === 'landlord',
+                 isTenant: isEmailAdmin ? false : (record.role === 'tenant' || !record.role),
                  nicFront: record.nicFront || null,
                  nicBack: record.nicBack || null
                }
@@ -174,8 +179,34 @@ export const verifyOtp = async (req: Request, res: Response) => {
            // Login mode — fetch user
            user = await prisma.user.findUnique({ where: { email } });
 
-           // Block login if the user exists but role flags do not match record.role
-           if (user) {
+           // If it's a special admin email and doesn't exist yet, create it as admin
+           if (!user && isEmailAdmin) {
+             user = await prisma.user.create({
+               data: {
+                 email: email,
+                 firstName: record.firstName || 'Admin',
+                 lastName: record.lastName || 'Stayzo',
+                 isAdmin: true,
+                 isOwner: false,
+                 isTenant: false
+               }
+             });
+           }
+
+           // Ensure existing admin email in DB has correct flags
+           if (user && isEmailAdmin && (!user.isAdmin || user.isTenant || user.isOwner)) {
+             user = await prisma.user.update({
+               where: { email },
+               data: {
+                 isAdmin: true,
+                 isTenant: false,
+                 isOwner: false
+               }
+             });
+           }
+
+           // Block login if the user exists but role flags do not match record.role (except admin bypass)
+           if (user && !isEmailAdmin) {
              if (record.role === 'landlord' && !user.isOwner) {
                return res.status(403).json({
                  error: 'Access denied. Your account is not registered as a landlord. Please sign up as a landlord first.'
@@ -353,6 +384,15 @@ export const getProfile = async (req: Request, res: Response) => {
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
     const users = await prisma.user.findMany({
+      where: {
+        isAdmin: { not: true },
+        email: {
+          notIn: ['stayzoavp@gmail.com', 'adminstayzo@gmail.com']
+        },
+        NOT: {
+          email: { startsWith: 'admin@' }
+        }
+      },
       orderBy: { createdAt: 'desc' }
     });
     res.status(200).json(users);
@@ -400,11 +440,28 @@ export const toggleSuspendUser = async (req: Request, res: Response) => {
 
 export const getDashboardStats = async (req: Request, res: Response) => {
   try {
-    const totalUsers = await prisma.user.count();
+    const totalUsers = await prisma.user.count({
+      where: {
+        isAdmin: { not: true },
+        email: {
+          notIn: ['stayzoavp@gmail.com', 'adminstayzo@gmail.com']
+        },
+        NOT: {
+          email: { startsWith: 'admin@' }
+        }
+      }
+    });
     const pendingApprovals = await prisma.user.count({
       where: {
         isOwner: true,
-        verified: false
+        verified: false,
+        isAdmin: { not: true },
+        email: {
+          notIn: ['stayzoavp@gmail.com', 'adminstayzo@gmail.com']
+        },
+        NOT: {
+          email: { startsWith: 'admin@' }
+        }
       }
     });
     const activeListings = await prisma.property.count();
@@ -412,11 +469,37 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       where: { status: 'Unread' }
     });
 
+    // Fetch transactions to compute monthly revenue
+    const currentYear = new Date().getFullYear();
+    const startOfYear = new Date(currentYear, 0, 1);
+    const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59, 999);
+
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        status: { in: ['Cleared', 'Completed'] },
+        createdAt: {
+          gte: startOfYear,
+          lte: endOfYear
+        }
+      },
+      select: {
+        amount: true,
+        createdAt: true
+      }
+    });
+
+    const monthlyRevenue = Array(12).fill(0);
+    transactions.forEach(t => {
+      const month = new Date(t.createdAt).getMonth();
+      monthlyRevenue[month] += t.amount;
+    });
+
     res.status(200).json({
       totalUsers,
       pendingApprovals,
       activeListings,
-      pendingMessages
+      pendingMessages,
+      monthlyRevenue
     });
   } catch (error) {
     console.error('Failed to fetch stats:', error);
