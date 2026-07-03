@@ -170,6 +170,9 @@ export const verifyOtp = async (req: Request, res: Response) => {
                  isAdmin: isEmailAdmin,
                  isOwner: isEmailAdmin ? false : record.role === 'landlord',
                  isTenant: isEmailAdmin ? false : (record.role === 'tenant' || !record.role),
+                 isOwner: record.role === 'landlord',
+                 isTenant: true,
+                 isAdmin: false,
                  nicFront: record.nicFront || null,
                  nicBack: record.nicBack || null
                }
