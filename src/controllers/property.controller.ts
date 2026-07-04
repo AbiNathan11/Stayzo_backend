@@ -168,7 +168,7 @@ export const getProperties = async (req: Request, res: Response) => {
 
 export const searchProperties = async (req: Request, res: Response) => {
   try {
-    const { district, type, budget } = req.query;
+    const { district, type, budget, q } = req.query;
 
     const whereClause: any = {
       status: { equals: 'Available', mode: 'insensitive' },
@@ -177,6 +177,17 @@ export const searchProperties = async (req: Request, res: Response) => {
     if (district) whereClause.state = { equals: (district as string).trim(), mode: 'insensitive' };
     if (type)     whereClause.type  = { equals: type as string, mode: 'insensitive' };
     if (budget)   whereClause.price = { lte: parseFloat(budget as string) };
+
+    if (q && (q as string).trim() !== '') {
+      const term = (q as string).trim();
+      whereClause.OR = [
+        { title: { contains: term, mode: 'insensitive' } },
+        { description: { contains: term, mode: 'insensitive' } },
+        { city: { contains: term, mode: 'insensitive' } },
+        { address: { contains: term, mode: 'insensitive' } },
+        { state: { contains: term, mode: 'insensitive' } },
+      ];
+    }
 
     const properties = await prisma.property.findMany({
       where: whereClause,
