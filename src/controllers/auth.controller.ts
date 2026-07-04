@@ -65,23 +65,27 @@ export const sendOtp = async (req: Request, res: Response) => {
       }
     }
 
-    // Apply diagonal watermark to secure uploaded identity cards, then upload to AWS S3
+    // Apply diagonal watermark to secure uploaded identity cards, then upload to AWS S3 (with base64 fallback)
     let nicFrontUrl: string | null = null;
     let nicBackUrl: string | null = null;
 
     if (nicFront) {
       const watermarkedFront = await watermarkImage(nicFront);
-      // Upload watermarked NIC front to S3 — only the URL goes into DB
+      // Upload watermarked NIC front to S3; fall back to base64 if S3 is not configured/fails
       const uploaded = await uploadToS3(watermarkedFront, 'stayzo/nic-documents');
-      nicFrontUrl = uploaded.startsWith('https://') ? uploaded : null;
-      if (!nicFrontUrl) console.warn('NIC front S3 upload failed for:', email);
+      nicFrontUrl = uploaded;
+      if (!uploaded.startsWith('https://')) {
+        console.warn('NIC front S3 upload failed for:', email, '- using base64 fallback');
+      }
     }
     if (nicBack) {
       const watermarkedBack = await watermarkImage(nicBack);
-      // Upload watermarked NIC back to S3
+      // Upload watermarked NIC back to S3; fall back to base64 if S3 is not configured/fails
       const uploaded = await uploadToS3(watermarkedBack, 'stayzo/nic-documents');
-      nicBackUrl = uploaded.startsWith('https://') ? uploaded : null;
-      if (!nicBackUrl) console.warn('NIC back S3 upload failed for:', email);
+      nicBackUrl = uploaded;
+      if (!uploaded.startsWith('https://')) {
+        console.warn('NIC back S3 upload failed for:', email, '- using base64 fallback');
+      }
     }
 
     const otp = generateOTP();
@@ -142,6 +146,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
       await prisma.otp.delete({ where: { email } });
       
       let user = null;
+      let isDbOnline = false;
       try {
         const lowerEmail = email.toLowerCase();
         const isEmailAdmin = lowerEmail === 'adminstayzo@gmail.com' || lowerEmail === 'stayzoavp@gmail.com' || lowerEmail.startsWith('admin@');
@@ -222,12 +227,17 @@ export const verifyOtp = async (req: Request, res: Response) => {
              }
            }
         }
+        isDbOnline = true;
       } catch (err) {
         console.warn("Database operation failed. Falling back to mock user session.", err);
       }
 
       // Fallback user details if database is offline or user not found
       if (!user) {
+        if (isDbOnline) {
+          return res.status(404).json({ error: 'Account not found. Please register/signup first.' });
+        }
+
         const lowerEmail = email.toLowerCase();
         let first = record.firstName || 'Stayzo';
         let last = record.lastName || 'User';
@@ -370,12 +380,47 @@ export const getProfile = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    const [
+      activeListings,
+      ownerPendingVisits,
+      ownerUnreadMessages,
+      activeBookings,
+      tenantPendingVisits,
+      tenantUnreadMessages
+    ] = await Promise.all([
+      // Owner stats
+      prisma.property.count({ where: { ownerId: userProfile.id } }),
+      prisma.booking.count({ where: { property: { ownerId: userProfile.id }, status: 'PENDING' } }),
+      prisma.chatMessage.count({ where: { thread: { ownerId: userProfile.id }, senderId: { not: userProfile.id }, isRead: false } }),
+      // Tenant stats
+      prisma.booking.count({ where: { tenantId: userProfile.id, status: 'CONFIRMED' } }),
+      prisma.booking.count({ where: { tenantId: userProfile.id, status: 'PENDING' } }),
+      prisma.chatMessage.count({ where: { thread: { tenantId: userProfile.id }, senderId: { not: userProfile.id }, isRead: false } })
+    ]);
+
     res.status(200).json({
       user: {
+        id: userProfile.id,
         email: userProfile.email,
         firstName: userProfile.firstName,
         lastName: userProfile.lastName,
-        profileImage: userProfile.profileImage
+        profileImage: userProfile.profileImage,
+        nicFront: userProfile.nicFront,
+        nicBack: userProfile.nicBack,
+        isOwner: userProfile.isOwner,
+        isTenant: userProfile.isTenant
+      },
+      stats: {
+        owner: {
+          activeListings,
+          pendingVisits: ownerPendingVisits,
+          unreadMessages: ownerUnreadMessages
+        },
+        tenant: {
+          activeBookings,
+          pendingVisits: tenantPendingVisits,
+          unreadMessages: tenantUnreadMessages
+        }
       }
     });
   } catch (error) {
