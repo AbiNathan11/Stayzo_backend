@@ -22,7 +22,9 @@ export const createProperty = async (req: Request, res: Response) => {
       address, city, state, zipCode,
       bedrooms, bathrooms, sqft, type,
       images, panoramaImage, waterBillImage, amenities,
-      latitude, longitude, transactionData
+      latitude, longitude, transactionData,
+      foodName, foodPhone, jobName, jobPhone,
+      foodFacilities, partTimeJobs
     } = req.body;
 
     if (!ownerId || !title || !price) {
@@ -76,6 +78,12 @@ export const createProperty = async (req: Request, res: Response) => {
         amenities: amenities || [],
         latitude:  lat,
         longitude: lng,
+        foodName:  foodName || null,
+        foodPhone: foodPhone || null,
+        jobName:   jobName || null,
+        jobPhone:  jobPhone || null,
+        foodFacilities: foodFacilities ? (typeof foodFacilities === 'string' ? foodFacilities : JSON.stringify(foodFacilities)) : null,
+        partTimeJobs: partTimeJobs ? (typeof partTimeJobs === 'string' ? partTimeJobs : JSON.stringify(partTimeJobs)) : null,
       },
     });
 
