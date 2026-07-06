@@ -9,9 +9,25 @@ import {
   predictNoiseScoreBasic,
   NoisePredictionInput,
 } from '../services/noise.service';
+import { verifyUtilityBillImage } from '../services/billVerification.service';
 
 // ── AWS S3 upload helper (alias for consistent call sites) ────────────────────
 const uploadToCloudinary = uploadToS3;
+
+// ── Verify Utility Bill ───────────────────────────────────────────────────────
+export const verifyBill = async (req: Request, res: Response) => {
+  try {
+    const { image, expectedName, expectedAddress } = req.body;
+    if (!image) {
+      return res.status(400).json({ error: 'Image is required' });
+    }
+    const verification = await verifyUtilityBillImage(image, expectedName, expectedAddress);
+    return res.status(200).json(verification);
+  } catch (error: any) {
+    console.error('Error verifying bill:', error);
+    return res.status(500).json({ error: 'Failed to verify bill' });
+  }
+};
 
 // ── Create Property ───────────────────────────────────────────────────────────
 
@@ -29,6 +45,15 @@ export const createProperty = async (req: Request, res: Response) => {
 
     if (!ownerId || !title || !price) {
       return res.status(400).json({ error: 'ownerId, title, and price are required' });
+    }
+
+    if (!waterBillImage) {
+      return res.status(400).json({ error: 'A utility bill (electricity or water) image is required to verify ownership.' });
+    }
+
+    const verification = await verifyUtilityBillImage(waterBillImage);
+    if (!verification.isValid) {
+      return res.status(400).json({ error: `Utility bill verification failed: ${verification.reason}` });
     }
 
     // Upload images to AWS S3 concurrently

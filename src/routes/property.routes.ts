@@ -8,7 +8,8 @@ import {
   updateProperty,
   getNearbyAmenities,
   togglePropertyStatus,
-  markPropertyAsBoosted
+  markPropertyAsBoosted,
+  verifyBill
 } from '../controllers/property.controller';
 import { authenticateJWT, requireOwner } from '../middlewares/auth.middleware';
 import { validateCreateProperty } from '../middlewares/validation.middleware';
@@ -16,6 +17,7 @@ import { validateCreateProperty } from '../middlewares/validation.middleware';
 const router = Router();
 
 // Property endpoints
+router.post('/verify-bill', verifyBill); // Put this above /:id to avoid collision
 router.post('/', authenticateJWT, requireOwner, validateCreateProperty, createProperty);
 router.get('/', getProperties);
 router.get('/search', searchProperties);
