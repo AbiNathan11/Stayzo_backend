@@ -94,20 +94,20 @@ export const createProperty = async (req: Request, res: Response) => {
         city,
         state,
         zipCode,
-        bedrooms:  bedrooms  ? parseInt(bedrooms)     : 0,
-        bathrooms: bathrooms ? parseFloat(bathrooms)  : 0,
-        sqft:      sqft      ? parseFloat(sqft)       : 0,
-        type:      type || 'Apartment',
+        bedrooms: bedrooms ? parseInt(bedrooms) : 0,
+        bathrooms: bathrooms ? parseFloat(bathrooms) : 0,
+        sqft: sqft ? parseFloat(sqft) : 0,
+        type: type || 'Apartment',
         images: uploadedImages,
         panoramaImage: uploadedPanorama,
         waterBillImage: uploadedWaterBill,
         amenities: amenities || [],
-        latitude:  lat,
+        latitude: lat,
         longitude: lng,
-        foodName:  foodName || null,
+        foodName: foodName || null,
         foodPhone: foodPhone || null,
-        jobName:   jobName || null,
-        jobPhone:  jobPhone || null,
+        jobName: jobName || null,
+        jobPhone: jobPhone || null,
         foodFacilities: foodFacilities ? (typeof foodFacilities === 'string' ? foodFacilities : JSON.stringify(foodFacilities)) : null,
         partTimeJobs: partTimeJobs ? (typeof partTimeJobs === 'string' ? partTimeJobs : JSON.stringify(partTimeJobs)) : null,
       },
@@ -222,8 +222,8 @@ export const searchProperties = async (req: Request, res: Response) => {
     };
 
     if (district) whereClause.state = { equals: (district as string).trim(), mode: 'insensitive' };
-    if (type)     whereClause.type  = { equals: type as string, mode: 'insensitive' };
-    if (budget)   whereClause.price = { lte: parseFloat(budget as string) };
+    if (type) whereClause.type = { equals: type as string, mode: 'insensitive' };
+    if (budget) whereClause.price = { lte: parseFloat(budget as string) };
 
     if (q && (q as string).trim() !== '') {
       const term = (q as string).trim();
@@ -312,11 +312,11 @@ export const getPropertyById = async (req: Request, res: Response) => {
       ? reviewsList.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewCount
       : 0;
 
-    res.status(200).json({ 
-      ...property, 
+    res.status(200).json({
+      ...property,
       averageRating,
       reviewCount,
-      noisePrediction 
+      noisePrediction
     });
   } catch (error: any) {
     console.error('Error fetching property:', error);
@@ -393,19 +393,19 @@ export const updateProperty = async (req: Request, res: Response) => {
 
     // Re-geocode if address components have changed
     const addressChanged =
-      (address  !== undefined && address  !== existing.address)  ||
-      (city     !== undefined && city     !== existing.city)     ||
-      (state    !== undefined && state    !== existing.state)    ||
-      (zipCode  !== undefined && zipCode  !== existing.zipCode);
+      (address !== undefined && address !== existing.address) ||
+      (city !== undefined && city !== existing.city) ||
+      (state !== undefined && state !== existing.state) ||
+      (zipCode !== undefined && zipCode !== existing.zipCode);
 
     let lat = existing.latitude;
     let lng = existing.longitude;
 
     if (addressChanged) {
-      const newAddress  = address  !== undefined ? address  : existing.address;
-      const newCity     = city     !== undefined ? city     : existing.city;
-      const newState    = state    !== undefined ? state    : existing.state;
-      const newZipCode  = zipCode  !== undefined ? zipCode  : existing.zipCode;
+      const newAddress = address !== undefined ? address : existing.address;
+      const newCity = city !== undefined ? city : existing.city;
+      const newState = state !== undefined ? state : existing.state;
+      const newZipCode = zipCode !== undefined ? zipCode : existing.zipCode;
       const fullAddress = [newAddress, newCity, newState, newZipCode].filter(Boolean).join(', ');
 
       if (fullAddress.trim()) {
@@ -423,7 +423,7 @@ export const updateProperty = async (req: Request, res: Response) => {
     }
 
     // Handle image uploads to AWS S3
-    const uploadedPanorama  = panoramaImage  ? await uploadToS3(panoramaImage,  'stayzo/panoramas')  : existing.panoramaImage;
+    const uploadedPanorama = panoramaImage ? await uploadToS3(panoramaImage, 'stayzo/panoramas') : existing.panoramaImage;
     const uploadedWaterBill = waterBillImage ? await uploadToS3(waterBillImage, 'stayzo/waterbills') : existing.waterBillImage;
 
     let uploadedImages: string[] = existing.images;
@@ -436,24 +436,24 @@ export const updateProperty = async (req: Request, res: Response) => {
     const updated = await prisma.property.update({
       where: { id },
       data: {
-        title:       title       !== undefined ? title                  : existing.title,
-        description: description !== undefined ? description            : existing.description,
-        price:       price       !== undefined ? parseFloat(price)      : existing.price,
-        address:     address     !== undefined ? address                : existing.address,
-        city:        city        !== undefined ? city                   : existing.city,
-        state:       state       !== undefined ? state                  : existing.state,
-        zipCode:     zipCode     !== undefined ? zipCode                : existing.zipCode,
-        bedrooms:    bedrooms    !== undefined ? parseInt(bedrooms)     : existing.bedrooms,
-        bathrooms:   bathrooms   !== undefined ? parseFloat(bathrooms)  : existing.bathrooms,
-        sqft:        sqft        !== undefined ? parseFloat(sqft)       : existing.sqft,
-        type:        type        !== undefined ? type                   : existing.type,
-        status:      status      !== undefined ? status                 : existing.status,
-        images:      uploadedImages,
-        panoramaImage:  uploadedPanorama,
+        title: title !== undefined ? title : existing.title,
+        description: description !== undefined ? description : existing.description,
+        price: price !== undefined ? parseFloat(price) : existing.price,
+        address: address !== undefined ? address : existing.address,
+        city: city !== undefined ? city : existing.city,
+        state: state !== undefined ? state : existing.state,
+        zipCode: zipCode !== undefined ? zipCode : existing.zipCode,
+        bedrooms: bedrooms !== undefined ? parseInt(bedrooms) : existing.bedrooms,
+        bathrooms: bathrooms !== undefined ? parseFloat(bathrooms) : existing.bathrooms,
+        sqft: sqft !== undefined ? parseFloat(sqft) : existing.sqft,
+        type: type !== undefined ? type : existing.type,
+        status: status !== undefined ? status : existing.status,
+        images: uploadedImages,
+        panoramaImage: uploadedPanorama,
         waterBillImage: uploadedWaterBill,
-        amenities:   amenities   !== undefined ? amenities              : existing.amenities,
-        latitude:    lat,
-        longitude:   lng,
+        amenities: amenities !== undefined ? amenities : existing.amenities,
+        latitude: lat,
+        longitude: lng,
       },
       include: {
         owner: { select: { firstName: true, lastName: true, email: true } },
@@ -523,9 +523,9 @@ export const togglePropertyStatus = async (req: Request, res: Response) => {
 export const markPropertyAsBoosted = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { 
-      amount, 
-      paymentMethod, 
+    const {
+      amount,
+      paymentMethod,
       reference,
       status,
       email,
@@ -590,6 +590,7 @@ export const requestBooking = async (req: Request, res: Response) => {
     if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
 
     const compositeId = `${tenantId}_${id}`;
+
     
     // Check if already requested
     const existing = await prisma.notification.findFirst({
@@ -645,6 +646,7 @@ export const cancelBookingRequest = async (req: Request, res: Response) => {
     if (!property) return res.status(404).json({ error: 'Property not found' });
 
     const compositeId = `${tenantId}_${id}`;
+
     
     await prisma.notification.deleteMany({
       where: {
@@ -678,6 +680,7 @@ export const checkBookingStatus = async (req: Request, res: Response) => {
     if (!property) return res.status(404).json({ error: 'Property not found' });
 
     const compositeId = `${tenantId}_${id}`;
+
     
     const existing = await prisma.notification.findFirst({
       where: {
