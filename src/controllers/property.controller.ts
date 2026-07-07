@@ -10,6 +10,7 @@ import {
   NoisePredictionInput,
 } from '../services/noise.service';
 import { verifyUtilityBillImage } from '../services/billVerification.service';
+import { sendBookingRequestEmail } from '../services/email.service';
 
 // ── AWS S3 upload helper (alias for consistent call sites) ────────────────────
 const uploadToCloudinary = uploadToS3;
@@ -569,3 +570,151 @@ export const markPropertyAsBoosted = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to mark property as boosted' });
   }
 };
+
+export const requestBooking = async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params; // propertyId
+    const tenantId = authReq.user?.id;
+    if (!tenantId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const property = await prisma.property.findUnique({
+      where: { id },
+      include: { owner: true }
+    });
+
+    if (!property) return res.status(404).json({ error: 'Property not found' });
+    if (property.ownerId === tenantId) return res.status(400).json({ error: 'Owners cannot book their own property' });
+
+    const tenant = await prisma.user.findUnique({ where: { id: tenantId } });
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+    const compositeId = `${tenantId}_${id}`;
+    
+    // Check if already requested
+    const existing = await prisma.notification.findFirst({
+      where: {
+        userId: property.ownerId,
+        type: 'BOOKING_REQUEST',
+        bookingId: compositeId
+      }
+    });
+
+    if (existing) {
+      return res.status(400).json({ error: 'Already requested' });
+    }
+
+    const tenantName = `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim() || tenant.email;
+    const ownerName = `${property.owner.firstName || ''} ${property.owner.lastName || ''}`.trim() || property.owner.email;
+
+    // Create Notification
+    await prisma.notification.create({
+      data: {
+        userId: property.ownerId,
+        title: 'New Booking Request',
+        message: `${tenantName} requested to book ${property.title}.`,
+        type: 'BOOKING_REQUEST',
+        bookingId: compositeId // using bookingId to store tenant_property mapping
+      }
+    });
+
+    // Update bookingStatus
+    await prisma.property.update({
+      where: { id },
+      data: { bookingStatus: 'pending' }
+    });
+
+    // Send Email
+    await sendBookingRequestEmail(property.owner.email, ownerName, tenantName, property.title);
+
+    res.status(200).json({ success: true, message: 'Booking requested successfully' });
+  } catch (error) {
+    console.error('Error requesting booking:', error);
+    res.status(500).json({ error: 'Failed to request booking' });
+  }
+};
+
+export const cancelBookingRequest = async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params; // propertyId
+    const tenantId = authReq.user?.id;
+    if (!tenantId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const property = await prisma.property.findUnique({ where: { id } });
+    if (!property) return res.status(404).json({ error: 'Property not found' });
+
+    const compositeId = `${tenantId}_${id}`;
+    
+    await prisma.notification.deleteMany({
+      where: {
+        userId: property.ownerId,
+        type: 'BOOKING_REQUEST',
+        bookingId: compositeId
+      }
+    });
+
+    // Reset bookingStatus
+    await prisma.property.update({
+      where: { id },
+      data: { bookingStatus: 'default' }
+    });
+
+    res.status(200).json({ success: true, message: 'Booking request cancelled' });
+  } catch (error) {
+    console.error('Error cancelling booking request:', error);
+    res.status(500).json({ error: 'Failed to cancel booking request' });
+  }
+};
+
+export const checkBookingStatus = async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params; // propertyId
+    const tenantId = authReq.user?.id;
+    if (!tenantId) return res.status(200).json({ requested: false });
+
+    const property = await prisma.property.findUnique({ where: { id } });
+    if (!property) return res.status(404).json({ error: 'Property not found' });
+
+    const compositeId = `${tenantId}_${id}`;
+    
+    const existing = await prisma.notification.findFirst({
+      where: {
+        userId: property.ownerId,
+        type: 'BOOKING_REQUEST',
+        bookingId: compositeId
+      }
+    });
+
+    res.status(200).json({ requested: !!existing });
+  } catch (error) {
+    console.error('Error checking booking status:', error);
+    res.status(500).json({ error: 'Failed to check booking status' });
+  }
+};
+
+export const acceptBookingRequest = async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    const { id } = req.params; // propertyId
+    const ownerId = authReq.user?.id;
+    if (!ownerId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const property = await prisma.property.findUnique({ where: { id } });
+    if (!property) return res.status(404).json({ error: 'Property not found' });
+    if (property.ownerId !== ownerId) return res.status(403).json({ error: 'Forbidden' });
+
+    const updated = await prisma.property.update({
+      where: { id },
+      data: { bookingStatus: 'Booked' }
+    });
+
+    res.status(200).json({ success: true, property: updated, message: 'Booking accepted' });
+  } catch (error) {
+    console.error('Error accepting booking request:', error);
+    res.status(500).json({ error: 'Failed to accept booking request' });
+  }
+};
+
+
