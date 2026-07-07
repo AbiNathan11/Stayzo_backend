@@ -591,6 +591,7 @@ export const requestBooking = async (req: Request, res: Response) => {
 
     const compositeId = `${tenantId}_${id}`;
 
+    
     // Check if already requested
     const existing = await prisma.notification.findFirst({
       where: {
@@ -646,6 +647,7 @@ export const cancelBookingRequest = async (req: Request, res: Response) => {
 
     const compositeId = `${tenantId}_${id}`;
 
+    
     await prisma.notification.deleteMany({
       where: {
         userId: property.ownerId,
@@ -679,6 +681,7 @@ export const checkBookingStatus = async (req: Request, res: Response) => {
 
     const compositeId = `${tenantId}_${id}`;
 
+    
     const existing = await prisma.notification.findFirst({
       where: {
         userId: property.ownerId,
