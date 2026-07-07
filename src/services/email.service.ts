@@ -74,3 +74,35 @@ export const sendReplyEmail = async (toEmail: string, originalSubject: string, r
     return false;
   }
 };
+
+export const sendBookingRequestEmail = async (ownerEmail: string, ownerName: string, tenantName: string, propertyTitle: string) => {
+  try {
+    const mailOptions = {
+      from: `"Stayzo Support" <${process.env.EMAIL_USER}>`,
+      to: ownerEmail,
+      subject: 'New Booking Request - Stayzo',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; color: #1A1A1A;">
+          <h3 style="color: #1A1A1A; margin-bottom: 20px;">New Booking Request</h3>
+          <p style="font-size: 15px; line-height: 1.6;">Hello ${ownerName},</p>
+          <p style="font-size: 15px; line-height: 1.6;">
+            The tenant <strong>${tenantName}</strong> has requested to book your property <strong>${propertyTitle}</strong>.
+          </p>
+          <p style="font-size: 15px; line-height: 1.6;">
+            Please log in to your dashboard to view the request details and manage the booking.
+          </p>
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 13px; color: #777;">
+            <p>Thank you,<br/>Stayzo Team</p>
+          </div>
+        </div>
+      `,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Booking Request Email sent: %s', info.messageId);
+    return true;
+  } catch (error) {
+    console.error('Error sending booking request email:', error);
+    return false;
+  }
+};
