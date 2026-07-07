@@ -173,6 +173,10 @@ export const getProperties = async (req: Request, res: Response) => {
     const properties = await prisma.property.findMany({
       include: {
         owner: { select: { firstName: true, lastName: true, email: true } },
+        reviews: {
+          where: { status: { not: 'Flagged' } },
+          select: { rating: true }
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -182,8 +186,17 @@ export const getProperties = async (req: Request, res: Response) => {
       const coords = await ensurePropertyCoords(p);
       p.latitude = coords.lat;
       p.longitude = coords.lng;
+
+      const reviewsList = (p as any).reviews || [];
+      const reviewCount = reviewsList.length;
+      const averageRating = reviewCount > 0
+        ? reviewsList.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewCount
+        : 0;
+
       return {
         ...p,
+        averageRating,
+        reviewCount,
         noisePrediction: predictNoiseScoreBasic({
           lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
         } as NoisePredictionInput),
@@ -226,6 +239,10 @@ export const searchProperties = async (req: Request, res: Response) => {
       where: whereClause,
       include: {
         owner: { select: { firstName: true, lastName: true, email: true } },
+        reviews: {
+          where: { status: { not: 'Flagged' } },
+          select: { rating: true }
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -234,8 +251,17 @@ export const searchProperties = async (req: Request, res: Response) => {
       const coords = await ensurePropertyCoords(p);
       p.latitude = coords.lat;
       p.longitude = coords.lng;
+
+      const reviewsList = (p as any).reviews || [];
+      const reviewCount = reviewsList.length;
+      const averageRating = reviewCount > 0
+        ? reviewsList.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewCount
+        : 0;
+
       return {
         ...p,
+        averageRating,
+        reviewCount,
         noisePrediction: predictNoiseScoreBasic({
           lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
         } as NoisePredictionInput),
@@ -258,6 +284,10 @@ export const getPropertyById = async (req: Request, res: Response) => {
       where: { id },
       include: {
         owner: { select: { firstName: true, lastName: true, email: true } },
+        reviews: {
+          where: { status: { not: 'Flagged' } },
+          select: { rating: true }
+        },
       },
     });
 
@@ -275,7 +305,18 @@ export const getPropertyById = async (req: Request, res: Response) => {
       city: property.city,
     } as NoisePredictionInput);
 
-    res.status(200).json({ ...property, noisePrediction });
+    const reviewsList = (property as any).reviews || [];
+    const reviewCount = reviewsList.length;
+    const averageRating = reviewCount > 0
+      ? reviewsList.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewCount
+      : 0;
+
+    res.status(200).json({ 
+      ...property, 
+      averageRating,
+      reviewCount,
+      noisePrediction 
+    });
   } catch (error: any) {
     console.error('Error fetching property:', error);
     res.status(500).json({ error: 'Failed to fetch property' });
@@ -297,6 +338,12 @@ export const getPropertiesByOwner = async (req: Request, res: Response) => {
 
     const properties = await prisma.property.findMany({
       where: { ownerId },
+      include: {
+        reviews: {
+          where: { status: { not: 'Flagged' } },
+          select: { rating: true }
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -304,8 +351,17 @@ export const getPropertiesByOwner = async (req: Request, res: Response) => {
       const coords = await ensurePropertyCoords(p);
       p.latitude = coords.lat;
       p.longitude = coords.lng;
+
+      const reviewsList = (p as any).reviews || [];
+      const reviewCount = reviewsList.length;
+      const averageRating = reviewCount > 0
+        ? reviewsList.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewCount
+        : 0;
+
       return {
         ...p,
+        averageRating,
+        reviewCount,
         noisePrediction: predictNoiseScoreBasic({
           lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
         } as NoisePredictionInput),

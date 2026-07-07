@@ -36,7 +36,7 @@ model User {
   LeaseAgreement_LeaseAgreement_tenantIdToUser   LeaseAgreement[]   @relation("LeaseAgreement_tenantIdToUser")
   notifications                                  Notification[]
   properties                                     Property[]
-  Review                                         Review[]
+  reviews                                        Review[]
   Transaction                                    Transaction[]
 }
 
@@ -75,7 +75,7 @@ model Property {
   chatThreads    ChatThread[]
   LeaseAgreement LeaseAgreement[]
   owner          User               @relation(fields: [ownerId], references: [id])
-  Review         Review[]
+  reviews        Review[]
   Transaction    Transaction[]
 }
 
@@ -222,8 +222,8 @@ model Review {
   updatedAt   DateTime  @updatedAt
   authorId    String?
   propertyId  String?
-  User        User?     @relation(fields: [authorId], references: [id])
-  Property    Property? @relation(fields: [propertyId], references: [id])
+  user        User?     @relation(fields: [authorId], references: [id])
+  property    Property? @relation(fields: [propertyId], references: [id])
 }
 
 model Transaction {
