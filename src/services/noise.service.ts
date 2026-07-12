@@ -353,8 +353,8 @@ export async function fetchNearbyAmenitiesForCoords(lat: number, lng: number, ra
     { name: 'supermarket', type: 'supermarket' },
     { name: 'fish_market', type: 'market' },
     { name: 'fuel_station', type: 'gas_station' },
-    { name: 'atm_bank',    type: 'atm' },
-    { name: 'atm_bank',    type: 'bank' },
+    { name: 'atm',         type: 'atm' },
+    { name: 'bank',        type: 'bank' },
     { name: 'school',      type: 'school' },
     { name: 'pharmacy',    type: 'pharmacy' },
   ];
@@ -364,7 +364,8 @@ export async function fetchNearbyAmenitiesForCoords(lat: number, lng: number, ra
       const url = 'https://places.googleapis.com/v1/places:searchNearby';
       const body = {
         includedTypes: [cat.type],
-        maxResultCount: 5,
+        maxResultCount: 10,
+        rankPreference: 'DISTANCE',
         locationRestriction: {
           circle: {
             center: { latitude: lat, longitude: lng },
@@ -404,5 +405,15 @@ export async function fetchNearbyAmenitiesForCoords(lat: number, lng: number, ra
     .flatMap(r => r.value)
     .sort((a, b) => a.distance - b.distance);
     
-  return Array.from(new Map(allItems.map(item => [item.id, item])).values());
+  const uniqueItems = Array.from(new Map(allItems.map(item => [item.id, item])).values());
+  
+  const grouped = new Map<string, AmenityItem[]>();
+  for (const item of uniqueItems) {
+    const list = grouped.get(item.category) || [];
+    if (list.length < 2) {
+      list.push(item);
+      grouped.set(item.category, list);
+    }
+  }
+  return Array.from(grouped.values()).flat().sort((a, b) => a.distance - b.distance);
 }
