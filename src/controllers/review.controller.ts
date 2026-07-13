@@ -24,6 +24,18 @@ export const createReview = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized: User context missing' });
     }
 
+    // Check if the user has already reviewed this property
+    const existingReview = await prisma.review.findFirst({
+      where: {
+        authorId: authReq.user.id,
+        propertyId
+      }
+    });
+
+    if (existingReview) {
+      return res.status(400).json({ error: 'You have already reviewed this property' });
+    }
+
     // Fetch the property to get its title as targetName
     const property = await prisma.property.findUnique({
       where: { id: propertyId }
