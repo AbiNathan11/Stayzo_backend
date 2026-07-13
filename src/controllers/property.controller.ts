@@ -593,20 +593,27 @@ export const requestBooking = async (req: Request, res: Response) => {
 
     
     // Check if already requested
-    const existing = await prisma.notification.findFirst({
+    const existing = await prisma.propertyBooking.findFirst({
       where: {
-        userId: property.ownerId,
-        type: 'BOOKING_REQUEST',
-        bookingId: compositeId
+        propertyId: id,
+        tenantId: tenantId
       }
     });
 
-    if (existing) {
+    if (existing && existing.status !== 'CANCELLED') {
       return res.status(400).json({ error: 'Already requested' });
     }
 
     const tenantName = `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim() || tenant.email;
     const ownerName = `${property.owner.firstName || ''} ${property.owner.lastName || ''}`.trim() || property.owner.email;
+
+    const propertyBooking = await prisma.propertyBooking.create({
+      data: {
+        tenantId,
+        propertyId: id,
+        status: 'PENDING'
+      }
+    });
 
     // Create Notification
     await prisma.notification.create({
@@ -615,7 +622,7 @@ export const requestBooking = async (req: Request, res: Response) => {
         title: 'New Booking Request',
         message: `${tenantName} requested to book ${property.title}.`,
         type: 'BOOKING_REQUEST',
-        bookingId: compositeId // using bookingId to store tenant_property mapping
+        bookingId: propertyBooking.id // Store the actual PropertyBooking id!
       }
     });
 
@@ -645,16 +652,22 @@ export const cancelBookingRequest = async (req: Request, res: Response) => {
     const property = await prisma.property.findUnique({ where: { id } });
     if (!property) return res.status(404).json({ error: 'Property not found' });
 
-    const compositeId = `${tenantId}_${id}`;
-
-    
-    await prisma.notification.deleteMany({
-      where: {
-        userId: property.ownerId,
-        type: 'BOOKING_REQUEST',
-        bookingId: compositeId
-      }
+    const propertyBooking = await prisma.propertyBooking.findFirst({
+      where: { propertyId: id, tenantId }
     });
+
+    if (propertyBooking) {
+      await prisma.propertyBooking.delete({ where: { id: propertyBooking.id } });
+      
+      // Clean up notification
+      await prisma.notification.deleteMany({
+        where: {
+          userId: property.ownerId,
+          type: 'BOOKING_REQUEST',
+          bookingId: propertyBooking.id
+        }
+      });
+    }
 
     // Reset bookingStatus
     await prisma.property.update({
@@ -679,14 +692,11 @@ export const checkBookingStatus = async (req: Request, res: Response) => {
     const property = await prisma.property.findUnique({ where: { id } });
     if (!property) return res.status(404).json({ error: 'Property not found' });
 
-    const compositeId = `${tenantId}_${id}`;
-
-    
-    const existing = await prisma.notification.findFirst({
+    const existing = await prisma.propertyBooking.findFirst({
       where: {
-        userId: property.ownerId,
-        type: 'BOOKING_REQUEST',
-        bookingId: compositeId
+        propertyId: id,
+        tenantId,
+        status: 'PENDING'
       }
     });
 
@@ -711,6 +721,11 @@ export const acceptBookingRequest = async (req: Request, res: Response) => {
     const updated = await prisma.property.update({
       where: { id },
       data: { bookingStatus: 'Booked' }
+    });
+
+    await prisma.propertyBooking.updateMany({
+      where: { propertyId: id, status: 'PENDING' },
+      data: { status: 'CONFIRMED' }
     });
 
     res.status(200).json({ success: true, property: updated, message: 'Booking accepted' });

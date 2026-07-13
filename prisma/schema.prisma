@@ -38,6 +38,7 @@ model User {
   properties                                     Property[]
   reviews                                        Review[]
   Transaction                                    Transaction[]
+  propertyBookings                               PropertyBooking[]  @relation("TenantPropertyBookings")
 }
 
 model Property {
@@ -78,6 +79,7 @@ model Property {
   owner          User               @relation(fields: [ownerId], references: [id])
   reviews        Review[]
   Transaction    Transaction[]
+  propertyBookings PropertyBooking[] @relation("PropertyBookings")
 }
 
 model AvailabilitySlot {
@@ -111,6 +113,18 @@ model Booking {
   property   Property         @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   slot       AvailabilitySlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
   tenant     User             @relation("TenantBookings", fields: [tenantId], references: [id])
+}
+
+model PropertyBooking {
+  id         String        @id @default(uuid())
+  tenantId   String
+  propertyId String
+  status     BookingStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  tenant     User          @relation("TenantPropertyBookings", fields: [tenantId], references: [id])
+  property   Property      @relation("PropertyBookings", fields: [propertyId], references: [id], onDelete: Cascade)
 }
 
 model Notification {
