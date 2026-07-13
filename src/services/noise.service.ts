@@ -114,13 +114,13 @@ function classify(noiseLevelScore: number, factors: NoiseFactor[]): NoisePredict
 
   if (noiseLevelScore <= 33) {
     label = 'Low'; color = 'green';
-    explanation = 'This property is in a peaceful, quiet environment with minimal nearby noise sources. Great for rest, study, and family living.';
+    explanation = 'Situated in a serene and tranquil setting, this property benefits from minimal ambient disturbances. It offers an ideal acoustic environment for focused study, restful sleep, and undisturbed family living.';
   } else if (noiseLevelScore <= 66) {
     label = 'Medium'; color = 'yellow';
-    explanation = 'This property has moderate ambient noise from nearby roads or commercial activity — a typical urban or suburban environment.';
+    explanation = 'Located in a balanced acoustic zone, this property experiences standard ambient sounds typical of active suburban or urban residential environments. Expect a harmonious blend of neighborhood vitality and comfortable living.';
   } else {
     label = 'High'; color = 'red';
-    explanation = 'This property is in a high-activity area with significant noise from transit, entertainment venues, or industrial activity.';
+    explanation = 'Positioned in a vibrant, high-energy district, this property is exposed to elevated acoustic activity. The dynamic surroundings are characterized by close proximity to major transit hubs, lively entertainment venues, or bustling commercial zones.';
   }
 
   return { noiseLevelScore, label, color, explanation, factors };
