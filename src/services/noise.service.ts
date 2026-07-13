@@ -183,11 +183,28 @@ export function predictNoiseScoreBasic(input: NoisePredictionInput): NoisePredic
 
 async function fetchPlaceNames(lat: number, lng: number, type: string, radius: number, apiKey: string): Promise<string[]> {
   try {
-    const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json` +
-                `?location=${lat},${lng}&radius=${radius}&type=${type}&key=${apiKey}`;
-    const res = await fetch(url);
+    const url = 'https://places.googleapis.com/v1/places:searchNearby';
+    const body = {
+      includedTypes: [type],
+      maxResultCount: 20,
+      locationRestriction: {
+        circle: {
+          center: { latitude: lat, longitude: lng },
+          radius: radius
+        }
+      }
+    };
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.displayName.text'
+      },
+      body: JSON.stringify(body)
+    });
     const data = await res.json();
-    if (data.status === 'OK') return (data.results || []).map((p: any) => p.name as string);
+    if (data.places) return data.places.map((p: any) => p.displayName?.text).filter(Boolean);
     return [];
   } catch {
     return [];
@@ -327,43 +344,76 @@ export interface AmenityItem {
   vicinity?: string;
 }
 
-export async function fetchNearbyAmenitiesForCoords(lat: number, lng: number, radiusMeters = 3000): Promise<AmenityItem[]> {
+export async function fetchNearbyAmenitiesForCoords(lat: number, lng: number, radiusMeters = 10000): Promise<AmenityItem[]> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) { console.error('[NoisePrediction] GOOGLE_PLACES_API_KEY not set'); return []; }
 
   const categories = [
     { name: 'hospital',    type: 'hospital' },
     { name: 'supermarket', type: 'supermarket' },
-    { name: 'bus_station', type: 'transit_station' },
+    { name: 'fish_market', type: 'market' },
+    { name: 'fuel_station', type: 'gas_station' },
+    { name: 'atm',         type: 'atm' },
+    { name: 'bank',        type: 'bank' },
     { name: 'school',      type: 'school' },
-    { name: 'university',  type: 'university' },
-    { name: 'restaurant',  type: 'restaurant' },
     { name: 'pharmacy',    type: 'pharmacy' },
   ];
 
   const fetchCat = async (cat: typeof categories[0]): Promise<AmenityItem[]> => {
     try {
-      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json` +
-                  `?location=${lat},${lng}&radius=${radiusMeters}&type=${cat.type}&key=${apiKey}`;
-      const res = await fetch(url);
+      const url = 'https://places.googleapis.com/v1/places:searchNearby';
+      const body = {
+        includedTypes: [cat.type],
+        maxResultCount: 10,
+        rankPreference: 'DISTANCE',
+        locationRestriction: {
+          circle: {
+            center: { latitude: lat, longitude: lng },
+            radius: radiusMeters
+          }
+        }
+      };
+      
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': 'places.id,places.displayName.text,places.location,places.rating'
+        },
+        body: JSON.stringify(body)
+      });
       const data = await res.json();
-      if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') return [];
-      return (data.results || []).slice(0, 5).map((p: any) => ({
-        id: p.place_id,
-        name: p.name,
+      if (!data.places) return [];
+      
+      return data.places.map((p: any) => ({
+        id: p.id,
+        name: p.displayName?.text || '',
         category: cat.name,
-        lat: p.geometry.location.lat,
-        lng: p.geometry.location.lng,
+        lat: p.location.latitude,
+        lng: p.location.longitude,
         rating: p.rating,
-        distance: Math.round(haversineDistance(lat, lng, p.geometry.location.lat, p.geometry.location.lng)),
-        vicinity: p.vicinity || '',
+        distance: Math.round(haversineDistance(lat, lng, p.location.latitude, p.location.longitude)),
+        vicinity: '',
       }));
     } catch { return []; }
   };
 
   const results = await Promise.allSettled(categories.map(fetchCat));
-  return results
+  const allItems = results
     .filter((r): r is PromiseFulfilledResult<AmenityItem[]> => r.status === 'fulfilled')
     .flatMap(r => r.value)
     .sort((a, b) => a.distance - b.distance);
+    
+  const uniqueItems = Array.from(new Map(allItems.map(item => [item.id, item])).values());
+  
+  const grouped = new Map<string, AmenityItem[]>();
+  for (const item of uniqueItems) {
+    const list = grouped.get(item.category) || [];
+    if (list.length < 2) {
+      list.push(item);
+      grouped.set(item.category, list);
+    }
+  }
+  return Array.from(grouped.values()).flat().sort((a, b) => a.distance - b.distance);
 }
