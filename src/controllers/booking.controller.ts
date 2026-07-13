@@ -228,13 +228,35 @@ export const getOwnerBookings = async (req: AuthenticatedRequest, res: Response)
       where: { property: { ownerId } },
       include: {
         slot: true,
-        property: { select: { title: true, address: true } },
+        property: { select: { title: true, address: true, price: true } },
         tenant: { select: { firstName: true, lastName: true, email: true } }
       },
       orderBy: { createdAt: 'desc' }
     });
 
-    res.status(200).json(bookings);
+    // Fetch simple "Book Now" requests from PropertyBooking table
+    const propertyBookings = await prisma.propertyBooking.findMany({
+      where: {
+        property: { ownerId },
+        status: 'PENDING'
+      },
+      include: {
+        property: { select: { title: true, address: true, price: true } },
+        tenant: { select: { firstName: true, lastName: true, email: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const simpleRequests = propertyBookings.map(pb => ({
+      id: pb.id,
+      status: pb.status,
+      createdAt: pb.createdAt,
+      property: pb.property,
+      tenant: pb.tenant,
+      slot: null
+    }));
+
+    res.status(200).json([...bookings, ...simpleRequests]);
   } catch (error) {
     console.error('getOwnerBookings error:', error);
     res.status(500).json({ error: 'Failed to fetch bookings' });
@@ -246,6 +268,45 @@ export const approveBooking = async (req: AuthenticatedRequest, res: Response) =
   try {
     const ownerId = (req.user as any)?.id;
     const { id } = req.params;
+
+    const propertyBooking = await prisma.propertyBooking.findUnique({
+      where: { id },
+      include: { property: true }
+    });
+
+    if (propertyBooking) {
+      if (propertyBooking.property.ownerId !== ownerId) return res.status(403).json({ error: 'Forbidden' });
+      
+      const updated = await prisma.propertyBooking.update({
+        where: { id },
+        data: { status: 'CONFIRMED' }
+      });
+
+      await prisma.property.update({
+        where: { id: propertyBooking.propertyId },
+        data: { bookingStatus: 'Booked' }
+      });
+
+      const io = (req.app as any).get('io');
+      await createNotification(
+        propertyBooking.tenantId,
+        'Booking Request Accepted',
+        `Your request to book ${propertyBooking.property.title} has been accepted by the owner.`,
+        'booking_confirmed',
+        null,
+        io
+      );
+
+      await prisma.notification.deleteMany({
+        where: {
+          userId: ownerId,
+          type: 'BOOKING_REQUEST',
+          bookingId: id
+        }
+      });
+
+      return res.status(200).json({ success: true, message: 'Booking approved' });
+    }
 
     const booking = await prisma.booking.findUnique({
       where: { id },
@@ -317,6 +378,45 @@ export const rejectBooking = async (req: AuthenticatedRequest, res: Response) =>
   try {
     const ownerId = (req.user as any)?.id;
     const { id } = req.params;
+
+    const propertyBooking = await prisma.propertyBooking.findUnique({
+      where: { id },
+      include: { property: true }
+    });
+
+    if (propertyBooking) {
+      if (propertyBooking.property.ownerId !== ownerId) return res.status(403).json({ error: 'Forbidden' });
+      
+      const updated = await prisma.propertyBooking.update({
+        where: { id },
+        data: { status: 'CANCELLED' }
+      });
+
+      await prisma.property.update({
+        where: { id: propertyBooking.propertyId },
+        data: { bookingStatus: 'default' }
+      });
+
+      const io = (req.app as any).get('io');
+      await createNotification(
+        propertyBooking.tenantId,
+        'Booking Request Declined',
+        `Your request to book ${propertyBooking.property.title} has been declined.`,
+        'booking_cancelled',
+        null,
+        io
+      );
+
+      await prisma.notification.deleteMany({
+        where: {
+          userId: ownerId,
+          type: 'BOOKING_REQUEST',
+          bookingId: id
+        }
+      });
+
+      return res.status(200).json({ success: true, message: 'Booking declined' });
+    }
 
     const booking = await prisma.booking.findUnique({
       where: { id },
