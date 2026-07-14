@@ -206,12 +206,28 @@ export const getTenantBookings = async (req: AuthenticatedRequest, res: Response
       where: { tenantId },
       include: {
         slot: true,
-        property: { select: { title: true, address: true, city: true, images: true } }
+        property: { select: { id: true, title: true, description: true, address: true, city: true, images: true, price: true } }
       },
       orderBy: { createdAt: 'desc' }
     });
 
-    res.status(200).json(bookings);
+    const propertyBookings = await prisma.propertyBooking.findMany({
+      where: { tenantId },
+      include: {
+        property: { select: { id: true, title: true, description: true, address: true, city: true, images: true, price: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const mappedPropertyBookings = propertyBookings.map(pb => ({
+      id: pb.id,
+      status: pb.status,
+      createdAt: pb.createdAt,
+      property: pb.property,
+      slot: null
+    }));
+
+    res.status(200).json([...bookings, ...mappedPropertyBookings]);
   } catch (error) {
     console.error('getTenantBookings error:', error);
     res.status(500).json({ error: 'Failed to fetch bookings' });
@@ -293,7 +309,7 @@ export const approveBooking = async (req: AuthenticatedRequest, res: Response) =
         'Booking Request Accepted',
         `Your request to book ${propertyBooking.property.title} has been accepted by the owner.`,
         'booking_confirmed',
-        null,
+        undefined,
         io
       );
 
@@ -403,7 +419,7 @@ export const rejectBooking = async (req: AuthenticatedRequest, res: Response) =>
         'Booking Request Declined',
         `Your request to book ${propertyBooking.property.title} has been declined.`,
         'booking_cancelled',
-        null,
+        undefined,
         io
       );
 
@@ -463,7 +479,7 @@ export const cancelBooking = async (req: AuthenticatedRequest, res: Response) =>
     const userId = (req.user as any)?.id;
     const { id } = req.params;
 
-    const booking = await prisma.booking.findUnique({
+    let booking = await prisma.booking.findUnique({
       where: { id },
       include: {
         slot: true,
@@ -472,36 +488,77 @@ export const cancelBooking = async (req: AuthenticatedRequest, res: Response) =>
       }
     });
 
-    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (booking) {
+      const isTenant = booking.tenantId === userId;
+      const isOwner = booking.property.ownerId === userId;
+      if (!isTenant && !isOwner) return res.status(403).json({ error: 'Forbidden' });
 
-    const isTenant = booking.tenantId === userId;
-    const isOwner = booking.property.ownerId === userId;
+      const updated = await prisma.booking.update({
+        where: { id },
+        data: { status: 'CANCELLED' }
+      });
+
+      const io = (req.app as any).get('io');
+      const notifyUserId = isTenant ? booking.property.ownerId : booking.tenantId;
+      const cancelledBy = isTenant ? `Tenant ${booking.tenant.firstName}` : 'The owner';
+      await createNotification(
+        notifyUserId,
+        'Booking Cancelled',
+        `${cancelledBy} cancelled the visit for ${booking.property.title} on ${booking.slot.date.toDateString()} at ${booking.slot.startTime}.`,
+        'booking_cancelled',
+        id,
+        io
+      );
+
+      if (io) {
+        io.emit('booking_update', { bookingId: id, tenantId: booking.tenantId, ownerId: booking.property.ownerId, status: 'CANCELLED' });
+      }
+
+      return res.status(200).json(updated);
+    }
+
+    // Check PropertyBooking
+    const propertyBooking = await prisma.propertyBooking.findUnique({
+      where: { id },
+      include: {
+        property: { select: { title: true, ownerId: true } },
+        tenant: { select: { firstName: true, email: true } }
+      }
+    });
+
+    if (!propertyBooking) return res.status(404).json({ error: 'Booking not found' });
+
+    const isTenant = propertyBooking.tenantId === userId;
+    const isOwner = propertyBooking.property.ownerId === userId;
     if (!isTenant && !isOwner) return res.status(403).json({ error: 'Forbidden' });
 
-    const updated = await prisma.booking.update({
+    const updated = await prisma.propertyBooking.update({
       where: { id },
       data: { status: 'CANCELLED' }
     });
 
-    const io = (req.app as any).get('io');
+    await prisma.property.update({
+      where: { id: propertyBooking.propertyId },
+      data: { bookingStatus: 'available' }
+    });
 
-    // Notify the other party
-    const notifyUserId = isTenant ? booking.property.ownerId : booking.tenantId;
-    const cancelledBy = isTenant ? `Tenant ${booking.tenant.firstName}` : 'The owner';
+    const io = (req.app as any).get('io');
+    const notifyUserId = isTenant ? propertyBooking.property.ownerId : propertyBooking.tenantId;
+    const cancelledBy = isTenant ? `Tenant ${propertyBooking.tenant.firstName}` : 'The owner';
     await createNotification(
       notifyUserId,
       'Booking Cancelled',
-      `${cancelledBy} cancelled the visit for ${booking.property.title} on ${booking.slot.date.toDateString()} at ${booking.slot.startTime}.`,
+      `${cancelledBy} cancelled the booking request for ${propertyBooking.property.title}.`,
       'booking_cancelled',
       id,
       io
     );
 
     if (io) {
-      io.emit('booking_update', { bookingId: id, tenantId: booking.tenantId, ownerId: booking.property.ownerId, status: 'CANCELLED' });
+      io.emit('booking_update', { bookingId: id, tenantId: propertyBooking.tenantId, ownerId: propertyBooking.property.ownerId, status: 'CANCELLED' });
     }
 
-    res.status(200).json(updated);
+    return res.status(200).json(updated);
   } catch (error) {
     console.error('cancelBooking error:', error);
     res.status(500).json({ error: 'Failed to cancel booking' });
