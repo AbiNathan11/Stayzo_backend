@@ -69,3 +69,71 @@ export const verifyUtilityBillImage = async (
     return { isValid: false, reason: "Verification service failed." };
   }
 };
+
+export const verifyNicAgainstBill = async (
+  nicFrontBase64: string,
+  nicBackBase64: string,
+  billImageUrl: string
+): Promise<{ isMatch: boolean; reason?: string; nicName?: string; billName?: string }> => {
+  try {
+    const promptText = `
+      You are an expert document verification assistant.
+      I will provide you with three images:
+      1. The Front side of a National Identity Card (NIC).
+      2. The Back side of the National Identity Card (NIC).
+      3. A Utility Bill (Water or Electricity).
+
+      Your task:
+      1. Extract the full name of the person from the NIC (check both front and back).
+      2. Extract the customer name from the Utility Bill.
+      3. Determine if the names fundamentally match (allow for initials, slight misspellings, or title differences like Mr/Mrs).
+
+      CRITICAL RULES:
+      - If you cannot clearly read a name on the NIC, you MUST set "isMatch": false and explain that the NIC name is unreadable.
+      - If you cannot clearly read a name on the Utility Bill, you MUST set "isMatch": false and explain that the bill name is unreadable.
+      - If the images are clearly not what they claim to be (e.g. random pictures instead of a NIC or Bill), set "isMatch": false.
+      - The names must genuinely belong to the same person.
+
+      Respond strictly in JSON format matching this structure:
+      {
+        "isMatch": boolean,
+        "reason": "string explaining the match or mismatch",
+        "nicName": "string (extracted from NIC) or 'Not Found'",
+        "billName": "string (extracted from bill) or 'Not Found'"
+      }
+    `;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      temperature: 0.1,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: promptText },
+            { type: "image_url", image_url: { url: nicFrontBase64 } },
+            { type: "image_url", image_url: { url: nicBackBase64 } },
+            { type: "image_url", image_url: { url: billImageUrl } }
+          ]
+        }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (content) {
+      const parsed = JSON.parse(content);
+      return {
+        isMatch: Boolean(parsed.isMatch),
+        reason: parsed.reason || '',
+        nicName: parsed.nicName || '',
+        billName: parsed.billName || ''
+      };
+    }
+    return { isMatch: false, reason: "Could not analyze the images." };
+  } catch (error) {
+    console.error("OpenAI NIC vs Bill verification error:", error);
+    return { isMatch: false, reason: "Verification service failed." };
+  }
+};
+
