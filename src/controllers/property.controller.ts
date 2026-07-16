@@ -9,9 +9,8 @@ import {
   predictNoiseScoreBasic,
   NoisePredictionInput,
 } from '../services/noise.service';
-import { verifyUtilityBillImage } from '../services/billVerification.service';
-import { sendBookingRequestEmail } from '../services/email.service';
-
+import { verifyUtilityBillImage, verifyNicAgainstBill } from '../services/billVerification.service';
+import { sendBookingRequestEmail, sendBrokerAgreementEmail } from '../services/email.service';
 // ── AWS S3 upload helper (alias for consistent call sites) ────────────────────
 const uploadToCloudinary = uploadToS3;
 
@@ -41,7 +40,8 @@ export const createProperty = async (req: Request, res: Response) => {
       images, panoramaImage, waterBillImage, amenities,
       latitude, longitude, transactionData,
       foodName, foodPhone, jobName, jobPhone,
-      foodFacilities, partTimeJobs
+      foodFacilities, partTimeJobs,
+      ownershipType, realOwnerName, realOwnerEmail
     } = req.body;
 
     if (!ownerId || !title || !price) {
@@ -110,8 +110,17 @@ export const createProperty = async (req: Request, res: Response) => {
         jobPhone: jobPhone || null,
         foodFacilities: foodFacilities ? (typeof foodFacilities === 'string' ? foodFacilities : JSON.stringify(foodFacilities)) : null,
         partTimeJobs: partTimeJobs ? (typeof partTimeJobs === 'string' ? partTimeJobs : JSON.stringify(partTimeJobs)) : null,
+        status: ownershipType === 'Broker' ? 'pending' : 'Available',
       },
     });
+
+    if (ownershipType === 'Broker' && realOwnerEmail) {
+      const brokerAgreementLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/owners/broker?propertyId=${property.id}`;
+      // Note: We need the broker's name. We can query the user table to get the broker's name if we assume ownerId here is the broker's id.
+      const broker = await prisma.user.findUnique({ where: { id: ownerId } });
+      const brokerFullName = broker ? `${broker.firstName || ''} ${broker.lastName || ''}`.trim() : 'A Broker';
+      await sendBrokerAgreementEmail(realOwnerEmail, address, brokerFullName, brokerAgreementLink);
+    }
 
     if (transactionData) {
       await prisma.transaction.create({
@@ -734,5 +743,78 @@ export const acceptBookingRequest = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to accept booking request' });
   }
 };
+
+export const verifyNicImages = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { ownerNicFront, ownerNicBack } = req.body;
+
+    if (!ownerNicFront || !ownerNicBack) {
+      return res.status(400).json({ error: 'Both front and back NIC images are required' });
+    }
+
+    const property = await prisma.property.findUnique({ where: { id } });
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    if (!property.waterBillImage) {
+      return res.status(400).json({ error: 'Property does not have a utility bill to verify against.' });
+    }
+
+    const verification = await verifyNicAgainstBill(ownerNicFront, ownerNicBack, property.waterBillImage);
+    if (!verification.isMatch) {
+      return res.status(400).json({ 
+        error: 'NIC Name does not match Utility Bill Name',
+        reason: verification.reason,
+        nicName: verification.nicName,
+        billName: verification.billName
+      });
+    }
+
+    res.status(200).json({ success: true, message: 'Verification passed' });
+  } catch (error) {
+    console.error('Error verifying NIC images:', error);
+    res.status(500).json({ error: 'Failed to verify NIC images' });
+  }
+};
+
+export const acceptBrokerAgreement = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { ownerNicFront, ownerNicBack } = req.body;
+
+    if (!ownerNicFront || !ownerNicBack) {
+      return res.status(400).json({ error: 'Both front and back NIC images are required' });
+    }
+
+    const property = await prisma.property.findUnique({ where: { id } });
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    if (property.status !== 'pending') {
+      return res.status(400).json({ error: 'Property is not pending agreement' });
+    }
+
+    const uploadedNicFront = await uploadToS3(ownerNicFront, 'stayzo/owner_nics');
+    const uploadedNicBack = await uploadToS3(ownerNicBack, 'stayzo/owner_nics');
+
+    const updated = await prisma.property.update({
+      where: { id },
+      data: {
+        ownerNicFront: uploadedNicFront,
+        ownerNicBack: uploadedNicBack,
+        status: 'Available' // Set to available after agreement
+      }
+    });
+
+    res.status(200).json({ success: true, property: updated, message: 'Broker agreement accepted' });
+  } catch (error) {
+    console.error('Error accepting broker agreement:', error);
+    res.status(500).json({ error: 'Failed to accept broker agreement' });
+  }
+};
+
 
 

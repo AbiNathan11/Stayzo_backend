@@ -63,6 +63,8 @@ model Property {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
   waterBillImage String?
+  ownerNicFront  String?
+  ownerNicBack   String?
   latitude       Float?
   longitude      Float?
   isBoosted      Boolean            @default(false)

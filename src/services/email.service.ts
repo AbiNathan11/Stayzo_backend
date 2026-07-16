@@ -106,3 +106,39 @@ export const sendBookingRequestEmail = async (ownerEmail: string, ownerName: str
     return false;
   }
 };
+
+export const sendBrokerAgreementEmail = async (ownerEmail: string, propertyAddress: string, brokerName: string, brokerAgreementLink: string) => {
+  try {
+    const mailOptions = {
+      from: `"Stayzo Support" <${process.env.EMAIL_USER}>`,
+      to: ownerEmail,
+      subject: 'Action Required: Property Listing via Broker - Stayzo',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; color: #1A1A1A;">
+          <h3 style="color: #1A1A1A; margin-bottom: 20px;">Broker Listing Agreement Required</h3>
+          <p style="font-size: 15px; line-height: 1.6;">Hello,</p>
+          <p style="font-size: 15px; line-height: 1.6;">
+            A broker named <strong>${brokerName}</strong> has listed your property located at <strong>${propertyAddress}</strong>.
+          </p>
+          <p style="font-size: 15px; line-height: 1.6;">
+            To approve this listing and allow it to go live on Stayzo, please click the link below to verify your identity and agree to the listing:
+          </p>
+          <a href="${brokerAgreementLink}" style="display: inline-block; padding: 10px 20px; background-color: #4F46E5; color: #fff; text-decoration: none; border-radius: 5px; margin-top: 10px; margin-bottom: 20px;">Review and Agree</a>
+          <p style="font-size: 15px; line-height: 1.6;">
+            If you did not authorize this listing, please ignore this email or contact support.
+          </p>
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 13px; color: #777;">
+            <p>Thank you,<br/>Stayzo Team</p>
+          </div>
+        </div>
+      `,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Broker Agreement Email sent: %s', info.messageId);
+    return true;
+  } catch (error) {
+    console.error('Error sending broker agreement email:', error);
+    return false;
+  }
+};

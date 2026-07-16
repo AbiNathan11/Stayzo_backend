@@ -13,7 +13,9 @@ import {
   requestBooking,
   cancelBookingRequest,
   checkBookingStatus,
-  acceptBookingRequest
+  acceptBookingRequest,
+  acceptBrokerAgreement,
+  verifyNicImages
 } from '../controllers/property.controller';
 import { authenticateJWT, requireOwner } from '../middlewares/auth.middleware';
 import { validateCreateProperty } from '../middlewares/validation.middleware';
@@ -37,5 +39,7 @@ router.post('/:id/book', authenticateJWT, requestBooking);
 router.delete('/:id/book', authenticateJWT, cancelBookingRequest);
 router.get('/:id/booking-status', authenticateJWT, checkBookingStatus);
 router.post('/:id/accept-booking', authenticateJWT, requireOwner, acceptBookingRequest);
+router.post('/:id/verify-nic', verifyNicImages);
+router.post('/:id/broker-agreement', acceptBrokerAgreement);
 
 export default router;
