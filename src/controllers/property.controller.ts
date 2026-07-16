@@ -36,7 +36,7 @@ export const createProperty = async (req: Request, res: Response) => {
     const {
       ownerId, title, description, price,
       address, city, state, zipCode,
-      bedrooms, bathrooms, sqft, type,
+      bedrooms, bathrooms, hall, type,
       images, panoramaImage, waterBillImage, amenities,
       latitude, longitude, transactionData,
       foodName, foodPhone, jobName, jobPhone,
@@ -96,7 +96,7 @@ export const createProperty = async (req: Request, res: Response) => {
         zipCode,
         bedrooms: bedrooms ? parseInt(bedrooms) : 0,
         bathrooms: bathrooms ? parseFloat(bathrooms) : 0,
-        sqft: sqft ? parseFloat(sqft) : 0,
+        hall: hall ? parseInt(hall) : 0,
         type: type || 'Apartment',
         images: uploadedImages,
         panoramaImage: uploadedPanorama,
@@ -393,7 +393,7 @@ export const updateProperty = async (req: Request, res: Response) => {
     const {
       title, description, price,
       address, city, state, zipCode,
-      bedrooms, bathrooms, sqft, type,
+      bedrooms, bathrooms, hall, type,
       images, panoramaImage, waterBillImage, amenities, status,
     } = req.body;
 
@@ -454,7 +454,7 @@ export const updateProperty = async (req: Request, res: Response) => {
         zipCode: zipCode !== undefined ? zipCode : existing.zipCode,
         bedrooms: bedrooms !== undefined ? parseInt(bedrooms) : existing.bedrooms,
         bathrooms: bathrooms !== undefined ? parseFloat(bathrooms) : existing.bathrooms,
-        sqft: sqft !== undefined ? parseFloat(sqft) : existing.sqft,
+        hall: hall !== undefined ? parseInt(hall) : existing.hall,
         type: type !== undefined ? type : existing.type,
         status: status !== undefined ? status : existing.status,
         images: uploadedImages,
