@@ -145,6 +145,7 @@ export const getUserThreads = async (req: Request, res: Response) => {
           where: { ownerId: userId },
           include: {
             tenant: true,
+            owner: true,
             property: true,
             messages: {
               orderBy: { createdAt: 'desc' },
@@ -153,10 +154,30 @@ export const getUserThreads = async (req: Request, res: Response) => {
           },
           orderBy: { updatedAt: 'desc' }
         })
-      : await prisma.chatThread.findMany({
+      : role === 'tenant'
+      ? await prisma.chatThread.findMany({
           where: { tenantId: userId },
           include: {
             owner: true,
+            tenant: true,
+            property: true,
+            messages: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            }
+          },
+          orderBy: { updatedAt: 'desc' }
+        })
+      : await prisma.chatThread.findMany({
+          where: {
+            OR: [
+              { tenantId: userId },
+              { ownerId: userId }
+            ]
+          },
+          include: {
+            owner: true,
+            tenant: true,
             property: true,
             messages: {
               orderBy: { createdAt: 'desc' },
