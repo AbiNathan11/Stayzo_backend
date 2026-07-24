@@ -53,7 +53,7 @@ model Property {
   zipCode        String?
   bedrooms       Int
   bathrooms      Float
-  sqft           Float
+  hall           Int                @default(0)
   type           String
   status         String             @default("Available")
   bookingStatus  String             @default("default")

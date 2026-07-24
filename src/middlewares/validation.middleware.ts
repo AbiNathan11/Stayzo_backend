@@ -101,7 +101,7 @@ export const validateCreateProperty = (req: Request, res: Response, next: NextFu
     zipCode,
     bedrooms,
     bathrooms,
-    sqft,
+    hall,
     type,
     amenities
   } = req.body;
@@ -125,7 +125,7 @@ export const validateCreateProperty = (req: Request, res: Response, next: NextFu
   req.body.zipCode = zipCode ? sanitizeString(zipCode) : '';
   req.body.bedrooms = bedrooms ? parseInt(bedrooms) : 0;
   req.body.bathrooms = bathrooms ? parseFloat(bathrooms) : 0;
-  req.body.sqft = sqft ? parseFloat(sqft) : 0;
+  req.body.hall = hall ? parseInt(hall) : 0;
   req.body.type = type ? sanitizeString(type) : 'Apartment';
 
   if (amenities && Array.isArray(amenities)) {
