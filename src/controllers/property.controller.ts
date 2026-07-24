@@ -207,7 +207,7 @@ export const getProperties = async (req: Request, res: Response) => {
         ...p,
         averageRating,
         reviewCount,
-        noisePrediction: predictNoiseScoreBasic({
+        noisePrediction: await predictNoiseScore({
           lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
         } as NoisePredictionInput),
       };
@@ -272,7 +272,7 @@ export const searchProperties = async (req: Request, res: Response) => {
         ...p,
         averageRating,
         reviewCount,
-        noisePrediction: predictNoiseScoreBasic({
+        noisePrediction: await predictNoiseScore({
           lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
         } as NoisePredictionInput),
       };
@@ -372,7 +372,7 @@ export const getPropertiesByOwner = async (req: Request, res: Response) => {
         ...p,
         averageRating,
         reviewCount,
-        noisePrediction: predictNoiseScoreBasic({
+        noisePrediction: await predictNoiseScore({
           lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
         } as NoisePredictionInput),
       };

@@ -380,21 +380,25 @@ export const getProfile = async (req: Request, res: Response) => {
 
     const [
       activeListings,
-      ownerPendingVisits,
+      ownerSlotPendingVisits,
+      ownerPropertyBookingsPending,
       ownerUnreadMessages,
       activeBookings,
       tenantPendingVisits,
       tenantUnreadMessages
     ] = await Promise.all([
       // Owner stats
-      prisma.property.count({ where: { ownerId: userProfile.id } }),
+      prisma.property.count({ where: { ownerId: userProfile.id, status: { not: 'Disabled' } } }),
       prisma.booking.count({ where: { property: { ownerId: userProfile.id }, status: 'PENDING' } }),
+      prisma.propertyBooking.count({ where: { property: { ownerId: userProfile.id }, status: 'PENDING' } }),
       prisma.chatMessage.count({ where: { thread: { ownerId: userProfile.id }, senderId: { not: userProfile.id }, isRead: false } }),
       // Tenant stats
-      prisma.booking.count({ where: { tenantId: userProfile.id, status: 'CONFIRMED' } }),
+      prisma.propertyBooking.count({ where: { tenantId: userProfile.id, status: 'CONFIRMED' } }),
       prisma.booking.count({ where: { tenantId: userProfile.id, status: 'PENDING' } }),
       prisma.chatMessage.count({ where: { thread: { tenantId: userProfile.id }, senderId: { not: userProfile.id }, isRead: false } })
     ]);
+
+    const ownerPendingVisits = ownerSlotPendingVisits + ownerPropertyBookingsPending;
 
     res.status(200).json({
       user: {
