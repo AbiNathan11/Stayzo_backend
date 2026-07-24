@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { sendOTPEmail } from '../services/email.service';
+import { sendOTPEmail, sendSuspendEmail } from '../services/email.service';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/db';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
@@ -28,6 +28,10 @@ export const sendOtp = async (req: Request, res: Response) => {
     } catch (err) {
       console.warn("Database connection issue. Bypassing check for seamless testing.", err);
       isDbOnline = false;
+    }
+
+    if (existingUser && existingUser.status === 'Suspended') {
+      return res.status(403).json({ error: 'Your account has been suspended by the administrator.' });
     }
 
     // Always allow adminstayzo@gmail.com and admin@/owner@/landlord@ emails to bypass checks
@@ -213,6 +217,9 @@ export const verifyOtp = async (req: Request, res: Response) => {
 
            // Block login if the user exists but role flags do not match record.role (except admin bypass)
            if (user && !isEmailAdmin) {
+             if (user.status === 'Suspended') {
+               return res.status(403).json({ error: 'Your account has been suspended by the administrator.' });
+             }
              if (record.role === 'landlord' && !user.isOwner) {
                return res.status(403).json({
                  error: 'Access denied. Your account is not registered as a landlord. Please sign up as a landlord first.'
@@ -473,10 +480,16 @@ export const toggleSuspendUser = async (req: Request, res: Response) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+    const newStatus = user.status === 'Active' ? 'Suspended' : 'Active';
     const updated = await prisma.user.update({
       where: { id },
-      data: { status: user.status === 'Active' ? 'Suspended' : 'Active' }
+      data: { status: newStatus }
     });
+    
+    if (newStatus === 'Suspended') {
+      await sendSuspendEmail(user.email, user.firstName || 'User');
+    }
+    
     res.status(200).json(updated);
   } catch (error) {
     console.error('Failed to toggle suspension:', error);
