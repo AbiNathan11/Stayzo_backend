@@ -340,22 +340,29 @@ export const updateProfile = async (req: Request, res: Response) => {
       finalProfileImage = await uploadProfileImageToS3(profileImage);
     }
 
+    const { isTenant, isOwner } = req.body;
+
     const updatedUser = await prisma.user.update({
       where: { email },
       data: {
         firstName: firstName || existingUser.firstName,
         lastName: lastName || existingUser.lastName,
-        profileImage: finalProfileImage
+        profileImage: finalProfileImage,
+        ...(isTenant !== undefined ? { isTenant: Boolean(isTenant) } : {}),
+        ...(isOwner !== undefined ? { isOwner: Boolean(isOwner) } : {})
       }
     });
 
     res.status(200).json({
       message: 'Profile updated successfully',
       user: {
+        id: updatedUser.id,
         email: updatedUser.email,
         firstName: updatedUser.firstName,
         lastName: updatedUser.lastName,
-        profileImage: updatedUser.profileImage
+        profileImage: updatedUser.profileImage,
+        isOwner: updatedUser.isOwner,
+        isTenant: updatedUser.isTenant
       }
     });
   } catch (error) {

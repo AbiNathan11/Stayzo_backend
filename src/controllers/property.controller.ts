@@ -228,6 +228,7 @@ export const searchProperties = async (req: Request, res: Response) => {
 
     const whereClause: any = {
       status: { equals: 'Available', mode: 'insensitive' },
+      bookingStatus: { notIn: ['Booked', 'booked'] }
     };
 
     if (district) whereClause.state = { equals: (district as string).trim(), mode: 'insensitive' };
