@@ -182,7 +182,7 @@ export const getProperties = async (req: Request, res: Response) => {
   try {
     const properties = await prisma.property.findMany({
       include: {
-        owner: { select: { firstName: true, lastName: true, email: true } },
+        owner: { select: { firstName: true, lastName: true, email: true, verified: true, createdAt: true, status: true } },
         reviews: {
           where: { status: { not: 'Flagged' } },
           select: { rating: true }
@@ -203,6 +203,13 @@ export const getProperties = async (req: Request, res: Response) => {
         ? reviewsList.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewCount
         : 0;
 
+      const owner = p.owner;
+      let computedVerified = false;
+      if (owner) {
+        const isThreeMonthsOld = new Date((owner as any).createdAt) < new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+        computedVerified = (owner as any).verified || ((owner as any).status !== 'Unverified' && isThreeMonthsOld);
+      }
+
       return {
         ...p,
         averageRating,
@@ -210,6 +217,12 @@ export const getProperties = async (req: Request, res: Response) => {
         noisePrediction: await predictNoiseScore({
           lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
         } as NoisePredictionInput),
+        owner: owner ? {
+          firstName: owner.firstName,
+          lastName: owner.lastName,
+          email: owner.email,
+          verified: computedVerified
+        } : null
       };
     }));
 
@@ -249,7 +262,7 @@ export const searchProperties = async (req: Request, res: Response) => {
     const properties = await prisma.property.findMany({
       where: whereClause,
       include: {
-        owner: { select: { firstName: true, lastName: true, email: true } },
+        owner: { select: { firstName: true, lastName: true, email: true, verified: true, createdAt: true, status: true } },
         reviews: {
           where: { status: { not: 'Flagged' } },
           select: { rating: true }
@@ -269,6 +282,13 @@ export const searchProperties = async (req: Request, res: Response) => {
         ? reviewsList.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewCount
         : 0;
 
+      const owner = p.owner;
+      let computedVerified = false;
+      if (owner) {
+        const isThreeMonthsOld = new Date((owner as any).createdAt) < new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+        computedVerified = (owner as any).verified || ((owner as any).status !== 'Unverified' && isThreeMonthsOld);
+      }
+
       return {
         ...p,
         averageRating,
@@ -276,6 +296,12 @@ export const searchProperties = async (req: Request, res: Response) => {
         noisePrediction: await predictNoiseScore({
           lat: p.latitude, lng: p.longitude, type: p.type, city: p.city,
         } as NoisePredictionInput),
+        owner: owner ? {
+          firstName: owner.firstName,
+          lastName: owner.lastName,
+          email: owner.email,
+          verified: computedVerified
+        } : null
       };
     }));
 
@@ -294,7 +320,7 @@ export const getPropertyById = async (req: Request, res: Response) => {
     const property = await prisma.property.findUnique({
       where: { id },
       include: {
-        owner: { select: { firstName: true, lastName: true, email: true } },
+        owner: { select: { firstName: true, lastName: true, email: true, verified: true, createdAt: true, status: true } },
         reviews: {
           where: { status: { not: 'Flagged' } },
           select: { rating: true }
@@ -322,11 +348,24 @@ export const getPropertyById = async (req: Request, res: Response) => {
       ? reviewsList.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewCount
       : 0;
 
+    const owner = property.owner;
+    let computedVerified = false;
+    if (owner) {
+      const isThreeMonthsOld = new Date((owner as any).createdAt) < new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      computedVerified = (owner as any).verified || ((owner as any).status !== 'Unverified' && isThreeMonthsOld);
+    }
+
     res.status(200).json({
       ...property,
       averageRating,
       reviewCount,
-      noisePrediction
+      noisePrediction,
+      owner: owner ? {
+        firstName: owner.firstName,
+        lastName: owner.lastName,
+        email: owner.email,
+        verified: computedVerified
+      } : null
     });
   } catch (error: any) {
     console.error('Error fetching property:', error);

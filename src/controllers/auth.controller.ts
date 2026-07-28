@@ -414,6 +414,9 @@ export const getProfile = async (req: Request, res: Response) => {
 
     const ownerPendingVisits = ownerSlotPendingVisits + ownerPropertyBookingsPending;
 
+    const isThreeMonthsOld = new Date(userProfile.createdAt) < new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const computedVerified = userProfile.verified || (userProfile.isOwner && userProfile.status !== 'Unverified' && isThreeMonthsOld);
+
     res.status(200).json({
       user: {
         id: userProfile.id,
@@ -424,7 +427,8 @@ export const getProfile = async (req: Request, res: Response) => {
         nicFront: userProfile.nicFront,
         nicBack: userProfile.nicBack,
         isOwner: userProfile.isOwner,
-        isTenant: userProfile.isTenant
+        isTenant: userProfile.isTenant,
+        verified: computedVerified
       },
       stats: {
         owner: {
@@ -459,7 +463,15 @@ export const getAllUsers = async (req: Request, res: Response) => {
       },
       orderBy: { createdAt: 'desc' }
     });
-    res.status(200).json(users);
+    const mapped = users.map(u => {
+      const isThreeMonthsOld = new Date(u.createdAt) < new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      const computedVerified = u.verified || (u.isOwner && u.status !== 'Unverified' && isThreeMonthsOld);
+      return {
+        ...u,
+        verified: computedVerified
+      };
+    });
+    res.status(200).json(mapped);
   } catch (error) {
     console.error('Failed to fetch users:', error);
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -473,11 +485,37 @@ export const toggleVerifyUser = async (req: Request, res: Response) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    const updated = await prisma.user.update({
-      where: { id },
-      data: { verified: !user.verified }
+
+    const isThreeMonthsOld = new Date(user.createdAt) < new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const currentlyVerified = user.verified || (user.isOwner && user.status !== 'Unverified' && isThreeMonthsOld);
+
+    let updated;
+    if (currentlyVerified) {
+      updated = await prisma.user.update({
+        where: { id },
+        data: {
+          verified: false,
+          status: user.isOwner ? 'Unverified' : user.status
+        }
+      });
+    } else {
+      updated = await prisma.user.update({
+        where: { id },
+        data: {
+          verified: true,
+          status: user.status === 'Unverified' ? 'Active' : user.status
+        }
+      });
+    }
+
+    // Return the user with computed verified state
+    const updatedIsThreeMonthsOld = new Date(updated.createdAt) < new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const computedVerified = updated.verified || (updated.isOwner && updated.status !== 'Unverified' && updatedIsThreeMonthsOld);
+
+    res.status(200).json({
+      ...updated,
+      verified: computedVerified
     });
-    res.status(200).json(updated);
   } catch (error) {
     console.error('Failed to toggle verification:', error);
     res.status(500).json({ error: 'Failed to toggle verification' });
