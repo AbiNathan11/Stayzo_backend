@@ -434,7 +434,7 @@ export const updateProperty = async (req: Request, res: Response) => {
       title, description, price,
       address, city, state, zipCode,
       bedrooms, bathrooms, hall, type,
-      images, panoramaImage, waterBillImage, amenities, status,
+      images, panoramaImage, waterBillImage, amenities, status, isDeleted
     } = req.body;
 
     const existing = await prisma.property.findUnique({ where: { id } });
@@ -503,6 +503,7 @@ export const updateProperty = async (req: Request, res: Response) => {
         amenities: amenities !== undefined ? amenities : existing.amenities,
         latitude: lat,
         longitude: lng,
+        isDeleted: isDeleted !== undefined ? isDeleted : (existing as any).isDeleted,
       },
       include: {
         owner: { select: { firstName: true, lastName: true, email: true } },
@@ -640,7 +641,7 @@ export const requestBooking = async (req: Request, res: Response) => {
 
     const compositeId = `${tenantId}_${id}`;
 
-    
+
     // Check if already requested
     const existing = await prisma.propertyBooking.findFirst({
       where: {
@@ -707,7 +708,7 @@ export const cancelBookingRequest = async (req: Request, res: Response) => {
 
     if (propertyBooking) {
       await prisma.propertyBooking.delete({ where: { id: propertyBooking.id } });
-      
+
       // Clean up notification
       await prisma.notification.deleteMany({
         where: {
@@ -804,7 +805,7 @@ export const verifyNicImages = async (req: Request, res: Response) => {
 
     const verification = await verifyNicAgainstBill(ownerNicFront, ownerNicBack, property.waterBillImage);
     if (!verification.isMatch) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'NIC Name does not match Utility Bill Name',
         reason: verification.reason,
         nicName: verification.nicName,

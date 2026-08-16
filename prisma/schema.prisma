@@ -82,6 +82,7 @@ model Property {
   reviews        Review[]
   Transaction    Transaction[]
   propertyBookings PropertyBooking[] @relation("PropertyBookings")
+  isDeleted      Boolean            @default(false)
 }
 
 model AvailabilitySlot {
