@@ -386,6 +386,16 @@ export const getPropertiesByOwner = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Forbidden: Access denied to these listings' });
     }
 
+    // Lazy cleanup of permanently deleted properties
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    await prisma.property.deleteMany({
+      where: {
+        isDeleted: true,
+        deletedAt: { lte: sevenDaysAgo }
+      }
+    }).catch(e => console.error("Error pruning deleted properties:", e));
+
+
     const properties = await prisma.property.findMany({
       where: { ownerId },
       include: {
@@ -503,7 +513,10 @@ export const updateProperty = async (req: Request, res: Response) => {
         amenities: amenities !== undefined ? amenities : existing.amenities,
         latitude: lat,
         longitude: lng,
-        isDeleted: isDeleted !== undefined ? isDeleted : (existing as any).isDeleted,
+        isDeleted: isDeleted !== undefined ? isDeleted : existing.isDeleted,
+        deletedAt: isDeleted !== undefined && isDeleted !== existing.isDeleted
+          ? (isDeleted ? new Date() : null)
+          : existing.deletedAt,
       },
       include: {
         owner: { select: { firstName: true, lastName: true, email: true } },

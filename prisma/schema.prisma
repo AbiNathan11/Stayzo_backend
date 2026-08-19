@@ -83,6 +83,7 @@ model Property {
   Transaction    Transaction[]
   propertyBookings PropertyBooking[] @relation("PropertyBookings")
   isDeleted      Boolean            @default(false)
+  deletedAt      DateTime?
 }
 
 model AvailabilitySlot {
