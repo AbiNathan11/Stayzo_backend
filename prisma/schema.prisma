@@ -74,6 +74,7 @@ model Property {
   jobPhone       String?
   foodFacilities String?
   partTimeJobs   String?
+  draftStep      Int?
   slots          AvailabilitySlot[]
   bookings       Booking[]
   chatThreads    ChatThread[]
@@ -236,7 +237,8 @@ model Review {
   comment     String
   targetName  String
   likes       Int       @default(0)
-  status      String    @default("Pending")
+  status        String    @default("Pending")
+  isTestimonial Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   authorId    String?

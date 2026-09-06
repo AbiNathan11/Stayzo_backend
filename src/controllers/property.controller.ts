@@ -29,6 +29,262 @@ export const verifyBill = async (req: Request, res: Response) => {
   }
 };
 
+// ── Save or Update Draft Property ──────────────────────────────────────────
+export const saveDraftProperty = async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const ownerId = authReq.user?.id || req.body.ownerId;
+
+    if (!ownerId) {
+      return res.status(400).json({ error: 'ownerId is required to save draft' });
+    }
+
+    const {
+      draftPropertyId,
+      formData,
+      currentStep,
+      ownershipType,
+      realOwnerName,
+      realOwnerEmail
+    } = req.body;
+
+    if (!formData) {
+      return res.status(400).json({ error: 'formData is required to save draft' });
+    }
+
+    // Determine target draft if already existing
+    let targetDraft = null;
+    if (draftPropertyId) {
+      targetDraft = await prisma.property.findFirst({
+        where: { id: draftPropertyId, ownerId }
+      });
+    }
+
+    const title = formData.street
+      ? `${formData.propertyCategory || 'Property'} at ${formData.street}`
+      : (formData.propertyCategory ? `${formData.propertyCategory} (Draft)` : 'Draft Property');
+    const description = formData.description || '';
+    const price = formData.rentPerMonth ? parseFloat(formData.rentPerMonth) : 0;
+    const address = [formData.houseNo, formData.street, formData.streetLine2].filter(Boolean).join(', ') || formData.city || 'Draft Address';
+    const city = formData.city || null;
+    const state = formData.district || null;
+    const zipCode = formData.postalCode || null;
+    const bedrooms = formData.bedrooms ? parseInt(formData.bedrooms) : 1;
+    const bathrooms = ((formData.attachedBathrooms ? parseFloat(formData.attachedBathrooms) : 0) + (formData.separateBathrooms ? parseFloat(formData.separateBathrooms) : 0)) || 1;
+    const hall = formData.halls ? parseInt(formData.halls) : 1;
+    const type = formData.propertyCategory || 'Apartment';
+    const images = Array.isArray(formData.images) ? formData.images.filter(Boolean) : [];
+    const panoramaImage = formData.panoramaImage || null;
+    const waterBillImage = formData.waterBillImage || null;
+    const lat = formData.latitude !== undefined && formData.latitude !== null ? parseFloat(formData.latitude) : null;
+    const lng = formData.longitude !== undefined && formData.longitude !== null ? parseFloat(formData.longitude) : null;
+    const foodFacilities = formData.foodFacilitiesList
+      ? JSON.stringify(formData.foodFacilitiesList)
+      : (formData.foodFacilities || null);
+    const partTimeJobs = formData.partTimeJobsList
+      ? JSON.stringify(formData.partTimeJobsList)
+      : (formData.partTimeJobs || null);
+
+    const draftStepNum = currentStep ? parseInt(currentStep) : 1;
+
+    let savedProperty;
+    if (targetDraft) {
+      savedProperty = await prisma.property.update({
+        where: { id: targetDraft.id },
+        data: {
+          title,
+          description,
+          price,
+          address,
+          city,
+          state,
+          zipCode,
+          bedrooms,
+          bathrooms,
+          hall,
+          type,
+          images,
+          panoramaImage,
+          waterBillImage,
+          latitude: lat,
+          longitude: lng,
+          foodName: formData.foodName || null,
+          foodPhone: formData.foodPhone || null,
+          jobName: formData.jobName || null,
+          jobPhone: formData.jobPhone || null,
+          foodFacilities,
+          partTimeJobs,
+          status: 'draft',
+          draftStep: draftStepNum,
+        }
+      });
+    } else {
+      savedProperty = await prisma.property.create({
+        data: {
+          ownerId,
+          title,
+          description,
+          price,
+          address,
+          city,
+          state,
+          zipCode,
+          bedrooms,
+          bathrooms,
+          hall,
+          type,
+          images,
+          panoramaImage,
+          waterBillImage,
+          amenities: ['Kitchen', 'Bathroom', 'Water facilities'],
+          latitude: lat,
+          longitude: lng,
+          foodName: formData.foodName || null,
+          foodPhone: formData.foodPhone || null,
+          jobName: formData.jobName || null,
+          jobPhone: formData.jobPhone || null,
+          foodFacilities,
+          partTimeJobs,
+          status: 'draft',
+          draftStep: draftStepNum,
+        }
+      });
+    }
+
+    return res.status(200).json({ success: true, property: savedProperty });
+  } catch (error: any) {
+    console.error('Error saving draft property:', error);
+    return res.status(500).json({ error: 'Failed to save draft property' });
+  }
+};
+
+// ── Get Active Draft Property ──────────────────────────────────────────────
+export const getDraftProperty = async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const ownerId = authReq.user?.id || (req.query.ownerId as string);
+
+    if (!ownerId) {
+      return res.status(400).json({ error: 'ownerId is required to fetch draft' });
+    }
+
+    const draftId = req.query.draftId as string | undefined;
+
+    const draft = await prisma.property.findFirst({
+      where: {
+        ...(draftId ? { id: draftId } : {}),
+        ownerId,
+        status: 'draft',
+        isDeleted: false
+      },
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    if (!draft) {
+      return res.status(200).json({ draft: null });
+    }
+
+    let houseNo = '';
+    let street = draft.address || '';
+    let streetLine2 = '';
+    if (draft.address && draft.address.includes(', ')) {
+      const parts = draft.address.split(', ');
+      houseNo = parts[0] || '';
+      street = parts[1] || '';
+      streetLine2 = parts.slice(2).join(', ');
+    }
+
+    const reconstructedFormData = {
+      houseNo,
+      street,
+      streetLine2,
+      city: draft.city || '',
+      district: draft.state || '',
+      postalCode: draft.zipCode || '',
+      propertyCategory: draft.type || 'Apartment',
+      kitchens: 1,
+      halls: draft.hall || 1,
+      bedrooms: draft.bedrooms || 1,
+      beds: 1,
+      attachedBathrooms: draft.bathrooms || 1,
+      separateBathrooms: 0,
+      rentPerMonth: draft.price && draft.price > 0 ? draft.price.toString() : '',
+      advanceMoney: '20000',
+      advanceDetails: '',
+      expectedTenants: 1,
+      foodFacilities: '',
+      partTimeJobs: '',
+      foodName: draft.foodName || '',
+      foodPhone: draft.foodPhone || '',
+      jobName: draft.jobName || '',
+      jobPhone: draft.jobPhone || '',
+      foodFacilitiesList: (() => {
+        try {
+          return draft.foodFacilities ? JSON.parse(draft.foodFacilities) : [{ name: "", specialty: "", area: "", phone: "" }];
+        } catch {
+          return [{ name: "", specialty: "", area: "", phone: "" }];
+        }
+      })(),
+      partTimeJobsList: (() => {
+        try {
+          return draft.partTimeJobs ? JSON.parse(draft.partTimeJobs) : [{ position: "", company: "", location: "", phone: "" }];
+        } catch {
+          return [{ position: "", company: "", location: "", phone: "" }];
+        }
+      })(),
+      ownershipType: 'Owner',
+      realOwnerName: '',
+      realOwnerEmail: '',
+      images: Array.isArray(draft.images) && draft.images.length > 0 
+        ? [...draft.images, ...Array(Math.max(0, 5 - draft.images.length)).fill("")]
+        : ["", "", "", "", ""],
+      panoramaImage: draft.panoramaImage || '',
+      waterBillImage: draft.waterBillImage || '',
+      latitude: draft.latitude,
+      longitude: draft.longitude,
+      description: draft.description || '',
+    };
+
+    return res.status(200).json({
+      draft,
+      formData: reconstructedFormData,
+      currentStep: draft.draftStep || 1
+    });
+  } catch (error: any) {
+    console.error('Error fetching draft property:', error);
+    return res.status(500).json({ error: 'Failed to fetch draft property' });
+  }
+};
+
+// ── Delete / Discard Draft Property ────────────────────────────────────────
+export const deleteDraftProperty = async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const ownerId = authReq.user?.id;
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: 'Property id is required' });
+    }
+
+    const property = await prisma.property.findUnique({ where: { id } });
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    if (ownerId && property.ownerId !== ownerId && !authReq.user?.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    await prisma.property.delete({ where: { id } });
+
+    return res.status(200).json({ success: true, message: 'Draft deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting draft property:', error);
+    return res.status(500).json({ error: 'Failed to delete draft property' });
+  }
+};
+
 // ── Create Property ───────────────────────────────────────────────────────────
 
 export const createProperty = async (req: Request, res: Response) => {
@@ -41,7 +297,8 @@ export const createProperty = async (req: Request, res: Response) => {
       latitude, longitude, transactionData,
       foodName, foodPhone, jobName, jobPhone,
       foodFacilities, partTimeJobs,
-      ownershipType, realOwnerName, realOwnerEmail
+      ownershipType, realOwnerName, realOwnerEmail,
+      draftPropertyId
     } = req.body;
 
     if (!ownerId || !title || !price) {
@@ -84,35 +341,89 @@ export const createProperty = async (req: Request, res: Response) => {
       }
     }
 
-    const property = await prisma.property.create({
-      data: {
-        ownerId,
-        title,
-        description: description || '',
-        price: parseFloat(price),
-        address: address || '',
-        city,
-        state,
-        zipCode,
-        bedrooms: bedrooms ? parseInt(bedrooms) : 0,
-        bathrooms: bathrooms ? parseFloat(bathrooms) : 0,
-        hall: hall ? parseInt(hall) : 0,
-        type: type || 'Apartment',
-        images: uploadedImages,
-        panoramaImage: uploadedPanorama,
-        waterBillImage: uploadedWaterBill,
-        amenities: amenities || [],
-        latitude: lat,
-        longitude: lng,
-        foodName: foodName || null,
-        foodPhone: foodPhone || null,
-        jobName: jobName || null,
-        jobPhone: jobPhone || null,
-        foodFacilities: foodFacilities ? (typeof foodFacilities === 'string' ? foodFacilities : JSON.stringify(foodFacilities)) : null,
-        partTimeJobs: partTimeJobs ? (typeof partTimeJobs === 'string' ? partTimeJobs : JSON.stringify(partTimeJobs)) : null,
-        status: ownershipType === 'Broker' ? 'pending' : 'Available',
-      },
-    });
+    // The status must ONLY change to "Available" or "pending" after a successful payment transaction.
+    // "pending" is meant for listings submitted by a broker until real landlord approval is obtained.
+    // Without a successful payment transaction, the status must remain "draft".
+    const hasSuccessfulPayment = Boolean(transactionData && (transactionData.reference || transactionData.amount));
+    if (!hasSuccessfulPayment) {
+      return res.status(400).json({ error: 'A successful payment transaction is required to publish this listing.' });
+    }
+
+    const finalStatus = ownershipType === 'Broker' ? 'pending' : 'Available';
+
+    let property;
+    let targetDraftId = draftPropertyId;
+    if (!targetDraftId) {
+      const existingDraft = await prisma.property.findFirst({
+        where: { ownerId, status: 'draft', isDeleted: false },
+        select: { id: true }
+      });
+      if (existingDraft) targetDraftId = existingDraft.id;
+    }
+
+    if (targetDraftId) {
+      property = await prisma.property.update({
+        where: { id: targetDraftId },
+        data: {
+          title,
+          description: description || '',
+          price: parseFloat(price),
+          address: address || '',
+          city,
+          state,
+          zipCode,
+          bedrooms: bedrooms ? parseInt(bedrooms) : 0,
+          bathrooms: bathrooms ? parseFloat(bathrooms) : 0,
+          hall: hall ? parseInt(hall) : 0,
+          type: type || 'Apartment',
+          images: uploadedImages,
+          panoramaImage: uploadedPanorama,
+          waterBillImage: uploadedWaterBill,
+          amenities: amenities || [],
+          latitude: lat,
+          longitude: lng,
+          foodName: foodName || null,
+          foodPhone: foodPhone || null,
+          jobName: jobName || null,
+          jobPhone: jobPhone || null,
+          foodFacilities: foodFacilities ? (typeof foodFacilities === 'string' ? foodFacilities : JSON.stringify(foodFacilities)) : null,
+          partTimeJobs: partTimeJobs ? (typeof partTimeJobs === 'string' ? partTimeJobs : JSON.stringify(partTimeJobs)) : null,
+          status: finalStatus,
+          draftStep: null,
+        },
+      });
+    } else {
+      property = await prisma.property.create({
+        data: {
+          ownerId,
+          title,
+          description: description || '',
+          price: parseFloat(price),
+          address: address || '',
+          city,
+          state,
+          zipCode,
+          bedrooms: bedrooms ? parseInt(bedrooms) : 0,
+          bathrooms: bathrooms ? parseFloat(bathrooms) : 0,
+          hall: hall ? parseInt(hall) : 0,
+          type: type || 'Apartment',
+          images: uploadedImages,
+          panoramaImage: uploadedPanorama,
+          waterBillImage: uploadedWaterBill,
+          amenities: amenities || [],
+          latitude: lat,
+          longitude: lng,
+          foodName: foodName || null,
+          foodPhone: foodPhone || null,
+          jobName: jobName || null,
+          jobPhone: jobPhone || null,
+          foodFacilities: foodFacilities ? (typeof foodFacilities === 'string' ? foodFacilities : JSON.stringify(foodFacilities)) : null,
+          partTimeJobs: partTimeJobs ? (typeof partTimeJobs === 'string' ? partTimeJobs : JSON.stringify(partTimeJobs)) : null,
+          status: finalStatus,
+          draftStep: null,
+        },
+      });
+    }
 
     if (ownershipType === 'Broker' && realOwnerEmail) {
       const brokerAgreementLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/owners/broker?propertyId=${property.id}`;
@@ -181,6 +492,10 @@ async function ensurePropertyCoords(p: any) {
 export const getProperties = async (req: Request, res: Response) => {
   try {
     const properties = await prisma.property.findMany({
+      where: {
+        status: { notIn: ['draft', 'Draft', 'Disabled', 'deleted', 'Deleted'] },
+        isDeleted: false,
+      },
       include: {
         owner: { select: { firstName: true, lastName: true, email: true, verified: true, createdAt: true, status: true } },
         reviews: {
