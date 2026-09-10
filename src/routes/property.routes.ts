@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { 
   createProperty, 
+  saveDraftProperty,
+  getDraftProperty,
+  deleteDraftProperty,
   getProperties, 
   getPropertyById, 
   getPropertiesByOwner, 
@@ -21,6 +24,11 @@ import { authenticateJWT, requireOwner } from '../middlewares/auth.middleware';
 import { validateCreateProperty } from '../middlewares/validation.middleware';
 
 const router = Router();
+
+// Draft property endpoints (placed before /:id)
+router.get('/draft', authenticateJWT, requireOwner, getDraftProperty);
+router.post('/draft', authenticateJWT, requireOwner, saveDraftProperty);
+router.delete('/draft/:id', authenticateJWT, requireOwner, deleteDraftProperty);
 
 // Property endpoints
 router.post('/verify-bill', verifyBill); // Put this above /:id to avoid collision

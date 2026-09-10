@@ -119,7 +119,8 @@ export const getReviewsByProperty = async (req: Request, res: Response) => {
           select: {
             id: true,
             firstName: true,
-            lastName: true
+            lastName: true,
+            profileImage: true
           }
         }
       },
@@ -211,6 +212,83 @@ export const deleteReview = async (req: Request, res: Response) => {
     res.status(200).json({ message: 'Review deleted successfully' });
   } catch (error) {
     console.error('Error deleting review:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const toggleTestimonialReview = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await prisma.review.findUnique({
+      where: { id }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Review not found' });
+    }
+
+    const nextState = !existing.isTestimonial;
+
+    if (nextState) {
+      const activeCount = await prisma.review.count({
+        where: { isTestimonial: true }
+      });
+
+      if (activeCount >= 7) {
+        return res.status(400).json({ error: 'Maximum 7 reviews can be selected for testimonials. Please unselect one before adding another.' });
+      }
+    }
+
+    const updated = await prisma.review.update({
+      where: { id },
+      data: { 
+        isTestimonial: nextState,
+        ...(nextState && existing.status === 'Flagged' ? { status: 'Approved' } : {})
+      }
+    });
+
+    res.status(200).json(updated);
+  } catch (error) {
+    console.error('Error toggling testimonial status:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getTestimonials = async (req: Request, res: Response) => {
+  try {
+    const testimonials = await prisma.review.findMany({
+      where: {
+        isTestimonial: true,
+        status: { not: 'Flagged' }
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            profileImage: true,
+            email: true
+          }
+        },
+        property: {
+          select: {
+            id: true,
+            title: true,
+            city: true,
+            type: true,
+            images: true
+          }
+        }
+      },
+      take: 7,
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    res.status(200).json(testimonials);
+  } catch (error) {
+    console.error('Error fetching testimonials:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
