@@ -552,27 +552,97 @@ export const getProperties = async (req: Request, res: Response) => {
 
 export const searchProperties = async (req: Request, res: Response) => {
   try {
-    const { district, type, budget, q } = req.query;
+    const { district, type, budget, minPrice, maxPrice, q } = req.query;
 
-    const whereClause: any = {
-      status: { equals: 'Available', mode: 'insensitive' },
-      bookingStatus: { notIn: ['Booked', 'booked'] }
-    };
+    const andConditions: any[] = [
+      { status: { equals: 'Available', mode: 'insensitive' } },
+      { bookingStatus: { notIn: ['Booked', 'booked'] } }
+    ];
 
-    if (district) whereClause.state = { equals: (district as string).trim(), mode: 'insensitive' };
-    if (type) whereClause.type = { equals: type as string, mode: 'insensitive' };
-    if (budget) whereClause.price = { lte: parseFloat(budget as string) };
-
-    if (q && (q as string).trim() !== '') {
-      const term = (q as string).trim();
-      whereClause.OR = [
-        { title: { contains: term, mode: 'insensitive' } },
-        { description: { contains: term, mode: 'insensitive' } },
-        { city: { contains: term, mode: 'insensitive' } },
-        { address: { contains: term, mode: 'insensitive' } },
-        { state: { contains: term, mode: 'insensitive' } },
-      ];
+    // Location matching: check state, city, address, and title with case-insensitive contains
+    if (district && typeof district === 'string' && district.trim() !== '' && district.trim().toLowerCase() !== 'all locations') {
+      const locTerm = district.trim().replace(/[.,;]+$/, '').trim();
+      if (locTerm) {
+        andConditions.push({
+          OR: [
+            { state: { contains: locTerm, mode: 'insensitive' } },
+            { city: { contains: locTerm, mode: 'insensitive' } },
+            { address: { contains: locTerm, mode: 'insensitive' } },
+            { title: { contains: locTerm, mode: 'insensitive' } }
+          ]
+        });
+      }
     }
+
+    // Property Type matching
+    if (type && typeof type === 'string' && type.trim() !== '' && type.trim().toLowerCase() !== 'all types') {
+      const typeStr = type.trim();
+      const typeParts = typeStr.split(/[/,]/).map(t => t.trim()).filter(Boolean);
+      andConditions.push({
+        OR: typeParts.map(t => ({
+          type: { contains: t, mode: 'insensitive' }
+        }))
+      });
+    }
+
+    // Price / Budget matching
+    let minP: number | undefined;
+    let maxP: number | undefined;
+
+    if (minPrice && !isNaN(parseFloat(minPrice as string))) {
+      minP = parseFloat(minPrice as string);
+    }
+    if (maxPrice && !isNaN(parseFloat(maxPrice as string))) {
+      maxP = parseFloat(maxPrice as string);
+    }
+
+    if (budget && typeof budget === 'string' && budget.trim().toLowerCase() !== 'any budget') {
+      const bStr = budget.trim();
+      if (bStr === 'Under Rs.50,000') {
+        maxP = 50000;
+      } else if (bStr === 'Rs.50,000 - Rs.100,000') {
+        minP = 50000;
+        maxP = 100000;
+      } else if (bStr === 'Rs.100,000 - Rs.200,000') {
+        minP = 100000;
+        maxP = 200000;
+      } else if (bStr === 'Rs.200,000 - Rs.500,000') {
+        minP = 200000;
+        maxP = 500000;
+      } else if (bStr === 'Over Rs.500,000') {
+        minP = 500000;
+      } else if (!isNaN(parseFloat(bStr))) {
+        maxP = parseFloat(bStr);
+      }
+    }
+
+    if (minP !== undefined || maxP !== undefined) {
+      const priceCondition: any = {};
+      if (minP !== undefined && !isNaN(minP)) {
+        priceCondition.gte = minP;
+      }
+      if (maxP !== undefined && !isNaN(maxP)) {
+        priceCondition.lte = maxP;
+      }
+      andConditions.push({ price: priceCondition });
+    }
+
+    // Keyword search (q)
+    if (q && typeof q === 'string' && q.trim() !== '') {
+      const term = q.trim();
+      andConditions.push({
+        OR: [
+          { title: { contains: term, mode: 'insensitive' } },
+          { description: { contains: term, mode: 'insensitive' } },
+          { city: { contains: term, mode: 'insensitive' } },
+          { address: { contains: term, mode: 'insensitive' } },
+          { state: { contains: term, mode: 'insensitive' } },
+          { type: { contains: term, mode: 'insensitive' } },
+        ]
+      });
+    }
+
+    const whereClause = { AND: andConditions };
 
     const properties = await prisma.property.findMany({
       where: whereClause,
